@@ -163,13 +163,10 @@ def moving_average_filter(processing: pipeline.ProcessingData,
                                                                                  'last_gate': 5},
                                                                   'Gate_Ch02': {'first_gate': 5,
                                                                                  'last_gate': 9}},
-                          weighting_factor: float = 3,
-                          error_calc_scheme: WeightedErrorCalcString = 'Weighted_SEM',
                           verbose: bool = False):
     """
     Moving average filter, averaging Gate values from neighboring soundings.
-      If both data and error estimates exist than the data will be averaged using a rolling weighted averaging scheme,
-        where the weights are the inverse of the square absolute error (1 / (ab_error^2)).
+      If both data and error estimates exist than the data will be averaged using Sum-of-Squares-of-Total method.
       If only data exists then the output will be a rolling average and error estimates will be from the
         unweighted standard error of the mean from the same rolling window.
     Results will always include error estimates in fractional percent (0.1 = 10%)
@@ -179,25 +176,6 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     filter_dict :
         Dictionary describing the filter widths for the first and the last gate 
         of each moment/channel . The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
-    weighting_factor :
-        Factor to adjust the weighting scheme, which is calculated like this:
-            weights = 1 / (weighting_factor * ((data * fractional_err)**2))
-        A factor of 1 would use only the inverse of the square of the absolute error.
-        We find that 2 to 3 is a good value.
-    error_calc_scheme :
-        Method to calculate errors. Methods include:
-            'Weighted_SEM' : Recommended. Weighted Standard Error of the Mean.
-                error_calc = sqrt(weights / weights^2)
-            'Balanced_1' :
-                error_calc = (Weighted_SEM * Unweighted_SEM * Average * STD)^(1/4)
-            'Average' :
-                error_calc = average(error)
-            'Balanced_2' : Not Recommended.
-                error_calc = sqrt((Weighted_SEM^2)/4 + (Unweighted_SEM^2)/4 + (Average^2)/4 + (STD^2)/4)
-            'STD' : Not Recommended.
-                error_calc = std(data)
-            'Unweighted_SEM' : Not Recommended. Unweighted Standard Error of the Mean
-                error_calc = std(data) / sqrt(number_elements(data))
     verbose :
         If True, more output about what the filter is doing
     """
@@ -213,7 +191,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 
     layer_data_keys = data.layer_data.keys()
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
-        print(f"  - Error estimates have been found! Using the {error_calc_scheme} method to calculate the average")
+        print(f"  - Error estimates have been found! Using the SST method to calculate the average")
     elif sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0:
         print("  - Found the data but no error estimates. will calculate errors using the Unweighted_SEM method")
     else:
@@ -223,9 +201,8 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     for line in lines.keys():
         if verbose: 
             print('Filtering line: {}'.format(line))
-        movingAverageFilterLine(lines[line], filter_list_dict,
-                                weighting_factor=weighting_factor,
-                                error_calc_scheme=error_calc_scheme,
+        movingAverageFilterLine(lines[line],
+                                filter_list_dict,
                                 verbose=verbose)
     processing.xyz = utils.merge_lines(lines)
     end = time.time()
@@ -234,8 +211,6 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 
 def movingAverageFilterLine(lineData,
                             filter_dict,
-                            weighting_factor=3,
-                            error_calc_scheme='Weighted_SEM',
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
@@ -276,11 +251,9 @@ def movingAverageFilterLine(lineData,
             dBdt_df[inuse_df == 0] = np.nan
             std_df[inuse_df == 0] = np.nan
 
-            lineData.layer_data[dat_key].loc[filt, :], lineData.layer_data[std_key].loc[filt, :] = utils.rolling_weighted_mean_df(dBdt_df,
-                                                                                                                                  std_df,
-                                                                                                                                  rolling_lengths,
-                                                                                                                                  weighting_factor=weighting_factor,
-                                                                                                                                  error_calc_scheme=error_calc_scheme)
+            lineData.layer_data[dat_key].loc[filt, :], lineData.layer_data[std_key].loc[filt, :] = utils.rolling_SST_mean_df(dBdt_df,
+                                                                                                                             std_df,
+                                                                                                                             rolling_lengths)
             lineData.layer_data[dat_key][lineData.layer_data[inuse_key] == 0] = np.nan
             lineData.layer_data[std_key][lineData.layer_data[inuse_key] == 0] = np.nan
 
