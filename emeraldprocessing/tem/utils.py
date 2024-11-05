@@ -533,8 +533,8 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
                     std_est_SST = var_est_SST ** 0.5
                     std_SST_err_ab.loc[sid, col] = std_est_SST
 
-        SST_frac_err = std_SST_err_ab/ave_dat
-
+        SST_frac_err = std_SST_err_ab / ave_dat
+        
         return ave_dat, SST_frac_err
     else:
         print(f'filter length: {len(rolling_lengths)}')
