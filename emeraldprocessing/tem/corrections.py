@@ -213,11 +213,9 @@ def movingAverageFilterLine(lineData,
                             filter_dict,
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
-    print(f"layer_data_keys = {layer_data_keys}")
-    print(f"sum([(std_key_prefix in key) for key in layer_data_keys]) = {sum([(std_key_prefix in key) for key in layer_data_keys])}")
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
+        channels_number_str = []
         for key in layer_data_keys:
-            channels_number_str = []
             if 'Gate' in key:
                 channels_number_str.append(key.split('_Ch')[-1])
         channels_number_str = sorted(channels_number_str)
@@ -231,36 +229,33 @@ def movingAverageFilterLine(lineData,
             else:
                 filt = lineData.flightlines.index
 
-            if verbose: print(f'filtering: {dat_key} and {std_key} with filters {filter_dict[dat_key]}')
+            if verbose:
+                print(f'filtering: {dat_key} and {std_key} with filters {filter_dict[dat_key]}')
 
             if type(filter_dict[dat_key]) == int:
                 # just one number -> box type filter
                 rolling_lengths = utils.interpolate_rolling_size_for_all_gates([filter_dict[dat_key], filter_dict[dat_key]],
-                                                                               lineData.layer_data[key])
+                                                                               lineData.layer_data[dat_key])
             elif len(filter_dict[dat_key]) > 1:
                 # trapeze type filter
                 rolling_lengths = utils.interpolate_rolling_size_for_all_gates(filter_dict[dat_key],
-                                                                               lineData.layer_data[key])
+                                                                               lineData.layer_data[dat_key])
             else:
                 raise Exception('filter lengths must be defined as:\n' +
                                     '    integer (box filter), or \n' +
                                     '    list, [width_at_first_gate, width_at_last_gate] (trapeze filter)')
 
-            dBdt_df = copy.deepcopy(lineData.layer_data[dat_key].loc[filt, :])
-            inuse_df = lineData.layer_data[inuse_key].loc[filt, :]
-            std_df = copy.deepcopy(lineData.layer_data[std_key].loc[filt, :])
+            dBdt_df  = copy.deepcopy(lineData.layer_data[dat_key].loc[filt, :])
+            inuse_df = copy.deepcopy(lineData.layer_data[inuse_key].loc[filt, :])
+            std_df   = copy.deepcopy(lineData.layer_data[std_key].loc[filt, :])
 
             dBdt_df[inuse_df == 0] = np.nan
             std_df[inuse_df == 0] = np.nan
 
-            print(f"dBdt_df = {dBdt_df}")
-            print(f"std_df = {std_df}")
             average_data, average_std = utils.rolling_SST_mean_df(dBdt_df,
                                                                   std_df,
                                                                   rolling_lengths)
 
-            print(f"average_data = {average_data}")
-            print(f"average_std = {average_std}")
             lineData.layer_data[dat_key].loc[filt, :] = average_data
             lineData.layer_data[std_key].loc[filt, :] = average_std
 
@@ -278,7 +273,8 @@ def movingAverageFilterLine(lineData,
                 else:
                     filt = lineData.flightlines.index
 
-                if verbose: print(f'filtering: {dat_key} with filters {filter_dict[dat_key]}')
+                if verbose:
+                    print(f'filtering: {dat_key} with filters {filter_dict[dat_key]}')
 
                 if type(filter_dict[dat_key]) == int:
                     # just one number -> box type filter
@@ -295,13 +291,10 @@ def movingAverageFilterLine(lineData,
             inuse_df = lineData.layer_data[utils.inuse_moment(dat_key)].loc[filt, :]
             dBdt_df[inuse_df == 0] = np.nan
 
-            print(f"dBdt_df = {dBdt_df}")
             average_data, average_std = utils.rolling_mean_df(dBdt_df,
                                                               rolling_lengths,
                                                               error_calc_scheme='Unweighted_SEM')
 
-            print(f"average_data = {average_data}")
-            print(f"average_std = {average_std}")
             lineData.layer_data[dat_key].loc[filt, :] = average_data
             lineData.layer_data[std_key].loc[filt, :] = average_std
 

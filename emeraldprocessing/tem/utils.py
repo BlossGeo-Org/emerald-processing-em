@@ -488,9 +488,9 @@ def round_to_odd(f):
     return int(np.ceil(f/2)  * 2 - 1)
 
 def interpolate_rolling_size_for_all_gates(filterlist, moment):
-    ci=moment.columns.values.astype(int)
-    c=[0, ci.max()]
-    f=interp1d(c, filterlist)
+    ci = moment.columns.values.astype(int)
+    c = [0, ci.max()]
+    f = interp1d(c, filterlist)
     ni = f(ci)
     return [round_to_odd(n) for n in ni]
 
