@@ -54,7 +54,7 @@ In the case where the sample numbers are equal within each stack, the actual val
 ```math
 \sigma_{total}^2 = \frac{\sum{n_i\left(\mu_i - \mu_{total}\right)^2} + \sum{n_i\sigma_i^2}}{\sum{n_i}} ,
 ```
-we let $$n_i$$ equal a scalar $$a$$, since $$n_i = n_j\forall i,j$$.  The variance then becomes
+we let $$n_i$$ equal a scalar $$a$$, since $$n_i = n_j \forall i,j$$.  The variance then becomes
 ```math
 \sigma_{total}^2 = \frac{a\sum{\left(\mu_i - \mu_{total}\right)^2} + a\sum{\sigma_i^2}}{a\sum{1}}
 ```
