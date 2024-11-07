@@ -10,7 +10,7 @@ from .setup import allowed_moments
 from .data_keys import inuse_dtype
 from .data_keys import dat_key_prefix, inuse_key_prefix, std_key_prefix, err_key_prefix
 
-import .variance_averaging as va
+from . import variance_averaging
 
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
@@ -529,7 +529,7 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
                     sample_std = df_err_ab[col].loc[current_window[0]: current_window[1] - 1].values
                     estimatedSST = np.sum(ave_dat[col].loc[current_window[0]: current_window[1] - 1].values / num_sample)
 
-                    var_est_SST = va.calcVarSST(sample_weight, sample_data, sample_std, estimatedSST)
+                    var_est_SST = variance_averaging.calcVarSST(sample_weight, sample_data, sample_std, estimatedSST)
                     std_est_SST = var_est_SST ** 0.5
                     std_SST_err_ab.loc[sid, col] = std_est_SST
 
