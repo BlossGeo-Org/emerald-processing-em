@@ -159,10 +159,10 @@ def select_lines(processing: pipeline.ProcessingData,
 
 
 def moving_average_filter(processing: pipeline.ProcessingData,
-                          filter_dict: MovingAverageFilterDict = {'Gate_Ch01': {'first_gate': 3,
-                                                                                 'last_gate': 5},
-                                                                  'Gate_Ch02': {'first_gate': 5,
-                                                                                 'last_gate': 9}},
+                          filter_dict: MovingAverageFilterDict = {'Gate_Ch01': {'width_at_first_gate': 3,
+                                                                                 'width_at_last_gate': 5},
+                                                                  'Gate_Ch02': {'width_at_first_gate': 5,
+                                                                                 'width_at_last_gate': 9}},
                           verbose: bool = False):
     """
     Moving average filter, averaging Gate values from neighboring soundings.
@@ -186,21 +186,21 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 
     filter_list_dict = {}
     for moment in filter_dict.keys():
-        filter_list_dict[moment] = [filter_dict[moment]['first_gate'],
-                                    filter_dict[moment]['last_gate']]
+        filter_list_dict[moment] = [filter_dict[moment]['width_at_first_gate'],
+                                    filter_dict[moment]['width_at_last_gate']]
 
     layer_data_keys = data.layer_data.keys()
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
         print(f"  - Error estimates have been found! Using the SST method to calculate the average")
     elif sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0:
-        print("  - Found the data but no error estimates. will calculate errors using the Unweighted_SEM method")
+        print(f"  - Found the data but no error estimates. will calculate errors using the Unweighted_SEM method")
     else:
-        print("This is bad, no data and no error estimates!")
+        print(f"This is bad, no data and no error estimates!")
 
     lines = utils.splitData_lines(data, line_key='Line')
     for line in lines.keys():
         if verbose: 
-            print('Filtering line: {}'.format(line))
+            print(f'Filtering line: {line}')
         movingAverageFilterLine(lines[line],
                                 filter_list_dict,
                                 verbose=verbose)
@@ -213,6 +213,8 @@ def movingAverageFilterLine(lineData,
                             filter_dict,
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
+    print(f"layer_data_keys = {layer_data_keys}")
+    print(f"sum([(std_key_prefix in key) for key in layer_data_keys]) = {sum([(std_key_prefix in key) for key in layer_data_keys])}")
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
         for key in layer_data_keys:
             channels_number_str = []
@@ -251,9 +253,17 @@ def movingAverageFilterLine(lineData,
             dBdt_df[inuse_df == 0] = np.nan
             std_df[inuse_df == 0] = np.nan
 
-            lineData.layer_data[dat_key].loc[filt, :], lineData.layer_data[std_key].loc[filt, :] = utils.rolling_SST_mean_df(dBdt_df,
-                                                                                                                             std_df,
-                                                                                                                             rolling_lengths)
+            print(f"dBdt_df = {dBdt_df}")
+            print(f"std_df = {std_df}")
+            average_data, average_std = utils.rolling_SST_mean_df(dBdt_df,
+                                                                  std_df,
+                                                                  rolling_lengths)
+
+            print(f"average_data = {average_data}")
+            print(f"average_std = {average_std}")
+            lineData.layer_data[dat_key].loc[filt, :] = average_data
+            lineData.layer_data[std_key].loc[filt, :] = average_std
+
             lineData.layer_data[dat_key][lineData.layer_data[inuse_key] == 0] = np.nan
             lineData.layer_data[std_key][lineData.layer_data[inuse_key] == 0] = np.nan
 
@@ -285,9 +295,15 @@ def movingAverageFilterLine(lineData,
             inuse_df = lineData.layer_data[utils.inuse_moment(dat_key)].loc[filt, :]
             dBdt_df[inuse_df == 0] = np.nan
 
-            lineData.layer_data[dat_key].loc[filt, :], lineData.layer_data[std_key].loc[filt, :]  = utils.rolling_mean_df(dBdt_df,
-                                                                                                                          rolling_lengths,
-                                                                                                                          error_calc_scheme='Unweighted_SEM')
+            print(f"dBdt_df = {dBdt_df}")
+            average_data, average_std = utils.rolling_mean_df(dBdt_df,
+                                                              rolling_lengths,
+                                                              error_calc_scheme='Unweighted_SEM')
+
+            print(f"average_data = {average_data}")
+            print(f"average_std = {average_std}")
+            lineData.layer_data[dat_key].loc[filt, :] = average_data
+            lineData.layer_data[std_key].loc[filt, :] = average_std
 
             lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
             lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan

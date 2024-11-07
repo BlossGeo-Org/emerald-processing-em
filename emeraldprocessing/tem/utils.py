@@ -509,7 +509,6 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
         # Prepare empty data frames
         ave_dat = df_dat * np.nan
         std_SST_err_ab = df_err_ab * np.nan
-        SST_frac_err = df_err_ab * np.nan
 
         for filter_length, col in zip(rolling_lengths, df_dat.columns):
             # Calculate the average of the data
@@ -543,7 +542,7 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
         raise Exception('number of rolling filter lengths differs from number of columns in dataframe ')
 
 
-def rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weighting_factor=3, error_calc_scheme='Weighted_SEM'):
+def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weighting_factor=3, error_calc_scheme='Weighted_SEM'):
     assert weighting_factor > 0, "weighting_factor must be greater than 0. Suggested ranges are between 1 [Weights are only based on the errors - errors will be smaller] and 10 [errors will be bigger]"
     if len(rolling_lengths) == len(df_dat.columns):
         # Calculate absolute errors
