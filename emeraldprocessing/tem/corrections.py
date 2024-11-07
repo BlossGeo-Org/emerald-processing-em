@@ -169,7 +169,9 @@ def moving_average_filter(processing: pipeline.ProcessingData,
       If both data and error estimates exist than the data will be averaged using Sum-of-Squares-of-Total method.
       If only data exists then the output will be a rolling average and error estimates will be from the
         unweighted standard error of the mean from the same rolling window.
-    Results will always include error estimates in fractional percent (0.1 = 10%)
+    Results will always include error estimates in fractional percent (0.1 = 10%). Please see:
+    https://github.com/emerald-geomodelling/emerald-processing-em/blob/exploring_data_averaging/notebooks/method_exporation/data_averaging/README.md
+    for more information about the SST method.
 
     Parameters
     ----------
