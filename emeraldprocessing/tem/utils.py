@@ -10,7 +10,7 @@ from .setup import allowed_moments
 from .data_keys import inuse_dtype
 from .data_keys import dat_key_prefix, inuse_key_prefix, std_key_prefix, err_key_prefix
 
-import variance_averaging as va
+import .variance_averaging as va
 
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
@@ -534,7 +534,7 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
                     std_SST_err_ab.loc[sid, col] = std_est_SST
 
         SST_frac_err = std_SST_err_ab / ave_dat
-        
+
         return ave_dat, SST_frac_err
     else:
         print(f'filter length: {len(rolling_lengths)}')
