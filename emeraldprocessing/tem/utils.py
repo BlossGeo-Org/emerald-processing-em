@@ -10,6 +10,8 @@ from .setup import allowed_moments
 from .data_keys import inuse_dtype
 from .data_keys import dat_key_prefix, inuse_key_prefix, std_key_prefix, err_key_prefix
 
+from . import variance_averaging
+
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 from .sps import interpolate_df2_on_df1, calcUTMcoordinates, calcEpochTime, read_concat_DGPS_sps_files
@@ -486,9 +488,9 @@ def round_to_odd(f):
     return int(np.ceil(f/2)  * 2 - 1)
 
 def interpolate_rolling_size_for_all_gates(filterlist, moment):
-    ci=moment.columns.values.astype(int)
-    c=[0, ci.max()]
-    f=interp1d(c, filterlist)
+    ci = moment.columns.values.astype(int)
+    c = [0, ci.max()]
+    f = interp1d(c, filterlist)
     ni = f(ci)
     return [round_to_odd(n) for n in ni]
 
@@ -498,7 +500,49 @@ def get_min_periods(filter_length):
     else:
         return 1
 
-def rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weighting_factor=3, error_calc_scheme='Weighted_SEM'):
+
+def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
+    if len(rolling_lengths) == len(df_dat.columns):
+        # Calculate absolute errors
+        df_err_ab = df_dat * df_err_fp
+
+        # Prepare empty data frames
+        ave_dat = df_dat * np.nan
+        std_SST_err_ab = df_err_ab * np.nan
+
+        for filter_length, col in zip(rolling_lengths, df_dat.columns):
+            # Calculate the average of the data
+            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).mean()
+
+            # Calculate the SST error
+            for sid in range(0, len(df_dat[col])):
+                current_window = [int(sid - np.floor(filter_length / 2)), int(sid + np.floor(filter_length / 2) + 1)]
+                if current_window[0] < 0:
+                    current_window[0] = 0
+                if current_window[1] > len(df_dat[col]):
+                    current_window[1] = len(df_dat[col])
+                num_sample = int(current_window[1] - current_window[0])
+                if num_sample >= get_min_periods(filter_length):
+                    sample_weight = np.ones(num_sample)
+                    sample_data = df_dat[col].loc[current_window[0]: current_window[1] - 1].values
+                    sample_std = df_err_ab[col].loc[current_window[0]: current_window[1] - 1].values
+                    estimatedSST = np.sum(ave_dat[col].loc[current_window[0]: current_window[1] - 1].values / num_sample)
+
+                    var_est_SST = variance_averaging.calcVarSST(sample_weight, sample_data, sample_std, estimatedSST)
+                    std_est_SST = var_est_SST ** 0.5
+                    std_SST_err_ab.loc[sid, col] = std_est_SST
+
+        SST_frac_err = std_SST_err_ab / ave_dat
+
+        return ave_dat, SST_frac_err
+    else:
+        print(f'filter length: {len(rolling_lengths)}')
+        print(f'number of data columns: {len(df_dat.columns)}')
+        print(f'number of std columns: {len(df_err_fp.columns)}')
+        raise Exception('number of rolling filter lengths differs from number of columns in dataframe ')
+
+
+def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weighting_factor=3, error_calc_scheme='Weighted_SEM'):
     assert weighting_factor > 0, "weighting_factor must be greater than 0. Suggested ranges are between 1 [Weights are only based on the errors - errors will be smaller] and 10 [errors will be bigger]"
     if len(rolling_lengths) == len(df_dat.columns):
         # Calculate absolute errors

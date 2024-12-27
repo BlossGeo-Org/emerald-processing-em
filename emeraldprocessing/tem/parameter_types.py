@@ -78,11 +78,12 @@ DistanceDict = typing.Annotated[
             "properties": {
                 'Gate_Ch01': {
                     "properties": {
-                        'first_gate': {
-                            "type": "number"},
+                        'first_gate': {"type": "number"},
                         'last_gate': {"type": "number"}}},
-                'Gate_Ch02': {"properties": {'first_gate': {"type": "number"},
-                                             'last_gate': {"type": "number"}}}}}}]
+                'Gate_Ch02': {
+                    "properties": {
+                        'first_gate': {"type": "number"},
+                        'last_gate': {"type": "number"}}}}}}]
 
 InversionModelUrls = typing.Annotated[
     dict, {
@@ -119,14 +120,14 @@ MovingAverageFilterDict = typing.Annotated[
             "properties": {
                 'Gate_Ch01': {
                     "properties": {
-                        'first_gate': {
+                        'width_at_first_gate': {
                             "type": "integer"},
-                        'last_gate': {"type": "integer"}}},
+                        'width_at_last_gate': {"type": "integer"}}},
                 'Gate_Ch02': {
                     "properties": {
-                        'first_gate': {
+                        'width_at_first_gate': {
                             "type": "integer"},
-                        'last_gate': {
+                        'width_at_last_gate': {
                             "type": "integer"}}}}}}]
 
 FlightType = typing.Literal['Production', 'Tie', 'Test', 'High-altitude'] | str
