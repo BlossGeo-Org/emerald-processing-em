@@ -273,6 +273,11 @@ def movingAverageFilterLine(lineData,
                 channel_number_str = key.split('_Ch')[-1]
                 dat_key = dat_key_prefix + channel_number_str
                 std_key = std_key_prefix + channel_number_str
+                if std_key_prefix not in layer_data_keys:
+                    if verbose:
+                        print(f"    - Creating '{std_key}' in 'layer_data'")
+                    lineData.layer_data[std_key] = lineData.layer_data[dat_key].copy() * np.nan
+
                 if 'ChannelsNumber' in lineData.flightlines.columns:
                     filt = lineData.flightlines.ChannelsNumber.astype(int) == int(channel_number_str)
                 else:
@@ -301,9 +306,6 @@ def movingAverageFilterLine(lineData,
                                                                   error_calc_scheme='Unweighted_SEM')
 
                 lineData.layer_data[dat_key].loc[filt, :] = average_data
-
-                if std_key not in lineData.layer_data.keys():
-                    lineData.layer_data[std_key] = pd.DataFrame(np.ones(lineData.layer_data[dat_key].shape, dtype=lineData.layer_data[dat_key].dtypes[0]) * np.nan, columns=lineData.layer_data[dat_key].columns)
                 lineData.layer_data[std_key].loc[filt, :] = average_std
 
                 lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
