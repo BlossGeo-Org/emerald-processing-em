@@ -585,6 +585,8 @@ def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weig
 
 def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
     if len(rolling_lengths) == len(df_dat.columns):
+        index_shift = min(df_dat.index)
+
         # Calculate absolute errors
         df_err_ab = df_dat * df_err_fp
 
@@ -604,17 +606,21 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
                 if current_window[1] > len(df_dat[col]):
                     current_window[1] = len(df_dat[col])
                 num_sample = int(current_window[1] - current_window[0])
+
                 if num_sample >= get_min_periods(filter_length):
                     sample_weight = np.ones(num_sample)
-                    sample_data = df_dat[col].loc[current_window[0]: current_window[1] - 1].values
-                    sample_std = df_err_ab[col].loc[current_window[0]: current_window[1] - 1].values
-                    estimatedSST = np.sum(ave_dat[col].loc[current_window[0]: current_window[1] - 1].values / num_sample)
+                    sample_data =          df_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values
+                    sample_std =        df_err_ab[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values
+                    estimatedSST = np.sum(ave_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values / num_sample)
 
-                    var_est_SST = variance_averaging.calcVarSST(sample_weight, sample_data, sample_std, estimatedSST)
+                    var_est_SST = variance_averaging.calcVarSST(n=sample_weight,
+                                                                mu=sample_data,
+                                                                sd=sample_std,
+                                                                mu_tot=estimatedSST)
                     std_est_SST = var_est_SST ** 0.5
-                    std_SST_err_ab.loc[sid, col] = std_est_SST
+                    std_SST_err_ab.loc[sid + index_shift, col] = std_est_SST
 
-        SST_frac_err = std_SST_err_ab / ave_dat
+        SST_frac_err = np.abs(std_SST_err_ab / ave_dat)
 
         return ave_dat, SST_frac_err
     else:
