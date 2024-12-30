@@ -289,19 +289,22 @@ def movingAverageFilterLine(lineData,
                                     '    integer (box filter), or \n' +
                                     '    list, [width_at_first_gate, width_at_last_gate] (trapeze filter)')
 
-            dBdt_df = copy.deepcopy(lineData.layer_data[dat_key].loc[filt, :])
-            inuse_df = lineData.layer_data[utils.inuse_moment(dat_key)].loc[filt, :]
-            dBdt_df[inuse_df == 0] = np.nan
+                dBdt_df = copy.deepcopy(lineData.layer_data[dat_key].loc[filt, :])
+                inuse_df = lineData.layer_data[utils.inuse_moment(dat_key)].loc[filt, :]
+                dBdt_df[inuse_df == 0] = np.nan
 
-            average_data, average_std = utils.rolling_mean_df(dBdt_df,
-                                                              rolling_lengths,
-                                                              error_calc_scheme='Unweighted_SEM')
+                average_data, average_std = utils.rolling_mean_df(dBdt_df,
+                                                                  rolling_lengths,
+                                                                  error_calc_scheme='Unweighted_SEM')
 
-            lineData.layer_data[dat_key].loc[filt, :] = average_data
-            lineData.layer_data[std_key].loc[filt, :] = average_std
+                lineData.layer_data[dat_key].loc[filt, :] = average_data
 
-            lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
-            lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+                if std_key not in lineData.layer_data.keys():
+                    lineData.layer_data[std_key] = pd.DataFrame(np.ones(lineData.layer_data[dat_key].shape, dtype=lineData.layer_data[dat_key].dtypes[0]) * np.nan, columns=lineData.layer_data[dat_key].columns)
+                lineData.layer_data[std_key].loc[filt, :] = average_std
+
+                lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+                lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
 
 def correct_data_tilt_for1D(processing: pipeline.ProcessingData,
                             verbose: bool = True):
