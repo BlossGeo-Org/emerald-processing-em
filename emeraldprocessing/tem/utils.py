@@ -288,7 +288,6 @@ def sampleDEM(DEMfilename,
         # else:
             # print(f'coordinates are inside raster bounds for projection: {dem.crs}')
 
-
     coord_list = [(x, y) for x, y in zip(geo_df["geometry"].x, geo_df["geometry"].y)]
     dtm_values = [x[0] for x in dem.sample(coord_list)]
     dem.close()
