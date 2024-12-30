@@ -204,7 +204,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     lines = utils.splitData_lines(data, line_key='Line')
     for line in lines.keys():
         if verbose: 
-            print(f'Filtering line: {line}')
+            print(f'  - Filtering line: {line}')
         movingAverageFilterLine(lines[line],
                                 filter_list_dict,
                                 verbose=verbose)
@@ -235,7 +235,7 @@ def movingAverageFilterLine(lineData,
                 filt = lineData.flightlines.index
 
             if verbose:
-                print(f'filtering: {dat_key} and {std_key} with filters {filter_dict[dat_key]}')
+                print(f'    - filtering: {dat_key} and {std_key} with filters {filter_dict[dat_key]}')
 
             if type(filter_dict[dat_key]) == int:
                 # just one number -> box type filter
@@ -284,7 +284,7 @@ def movingAverageFilterLine(lineData,
                     filt = lineData.flightlines.index
 
                 if verbose:
-                    print(f'filtering: {dat_key} with filters {filter_dict[dat_key]}')
+                    print(f'    - filtering: {dat_key} with filters {filter_dict[dat_key]}')
 
                 if type(filter_dict[dat_key]) == int:
                     # just one number -> box type filter
@@ -303,13 +303,14 @@ def movingAverageFilterLine(lineData,
 
                 average_data, average_std = utils.rolling_mean_df(dBdt_df,
                                                                   rolling_lengths,
-                                                                  error_calc_scheme='Unweighted_SEM')
+                                                                  error_calc_scheme = 'STD')
 
                 lineData.layer_data[dat_key].loc[filt, :] = average_data
                 lineData.layer_data[std_key].loc[filt, :] = average_std
 
                 lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
                 lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+
 
 def correct_data_tilt_for1D(processing: pipeline.ProcessingData,
                             verbose: bool = True):
