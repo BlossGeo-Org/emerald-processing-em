@@ -214,7 +214,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 def movingAverageFilterLine(lineData,
                             filter_dict,
                             verbose=False):
-    layer_data_keys = lineData.layer_data.keys()
+    layer_data_keys = [lineData.layer_data.keys()]
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
         channels_number_str = []
         for key in layer_data_keys:
