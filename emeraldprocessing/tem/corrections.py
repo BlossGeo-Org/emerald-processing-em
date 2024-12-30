@@ -216,7 +216,8 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 def movingAverageFilterLine(lineData,
                             filter_dict,
                             verbose=False):
-    layer_data_keys = [lineData.layer_data.keys()]
+    layer_data_keys = lineData.layer_data.keys()
+
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
         channels_number_str = []
         for key in layer_data_keys:
@@ -267,7 +268,7 @@ def movingAverageFilterLine(lineData,
             lineData.layer_data[std_key][lineData.layer_data[inuse_key] == 0] = np.nan
 
     else:
-        for key in layer_data_keys:
+        for key in list(layer_data_keys):
             if 'Gate' in key:
                 channel_number_str = key.split('_Ch')[-1]
                 dat_key = dat_key_prefix + channel_number_str
