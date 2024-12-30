@@ -176,14 +176,15 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     Parameters
     ----------
     filter_dict :
-        Dictionary describing the filter widths for the first and the last gate 
-        of each moment/channel . The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
+        Dictionary describing the filter widths, in number of soundings, centered on current sounding, for the first and the last time-gate
+        of each moment/channel. The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
+
     verbose :
         If True, more output about what the filter is doing
     """
     
     start = time.time()
-    print('  - Running a moving average filter  (line by line)')
+    print(f"  - Line-by-Line rolling window data averaging")
     data = processing.xyz
 
     filter_list_dict = {}
@@ -192,17 +193,21 @@ def moving_average_filter(processing: pipeline.ProcessingData,
                                     filter_dict[moment]['width_at_last_gate']]
 
     layer_data_keys = data.layer_data.keys()
+
+    assert sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0, f"********\n*\n* This is bad, there is no data found. layer_data key options are {layer_data_keys}\n*\n********"
+
+    if verbose:
+        print(f"    - Available keys are: {layer_data_keys}")
+
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
-        print(f"  - Error estimates have been found! Using the SST method to calculate the average")
+        print(f"  - Error estimates have been found! Using the 'SST_method' to calculate the average")
     elif sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0:
-        print(f"  - Found the data but no error estimates. will calculate errors using the Unweighted_SEM method")
-    else:
-        print(f"This is bad, no data and no error estimates!")
+        print(f"  - Found the data but no error estimates. Will calculate errors using the 'STD' method")
 
     lines = utils.splitData_lines(data, line_key='Line')
     for line in lines.keys():
         if verbose: 
-            print(f'Filtering line: {line}')
+            print(f'  - Filtering line: {line}')
         movingAverageFilterLine(lines[line],
                                 filter_list_dict,
                                 verbose=verbose)
@@ -215,6 +220,7 @@ def movingAverageFilterLine(lineData,
                             filter_dict,
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
+
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
         channels_number_str = []
         for key in layer_data_keys:
@@ -232,7 +238,7 @@ def movingAverageFilterLine(lineData,
                 filt = lineData.flightlines.index
 
             if verbose:
-                print(f'filtering: {dat_key} and {std_key} with filters {filter_dict[dat_key]}')
+                print(f'    - filtering: {dat_key} and {std_key} with filters {filter_dict[dat_key]}')
 
             if type(filter_dict[dat_key]) == int:
                 # just one number -> box type filter
@@ -265,18 +271,23 @@ def movingAverageFilterLine(lineData,
             lineData.layer_data[std_key][lineData.layer_data[inuse_key] == 0] = np.nan
 
     else:
-        for key in layer_data_keys:
+        for key in list(layer_data_keys):
             if 'Gate' in key:
                 channel_number_str = key.split('_Ch')[-1]
                 dat_key = dat_key_prefix + channel_number_str
                 std_key = std_key_prefix + channel_number_str
+                if std_key_prefix not in layer_data_keys:
+                    if verbose:
+                        print(f"    - Creating '{std_key}' in 'layer_data'")
+                    lineData.layer_data[std_key] = lineData.layer_data[dat_key].copy() * np.nan
+
                 if 'ChannelsNumber' in lineData.flightlines.columns:
                     filt = lineData.flightlines.ChannelsNumber.astype(int) == int(channel_number_str)
                 else:
                     filt = lineData.flightlines.index
 
                 if verbose:
-                    print(f'filtering: {dat_key} with filters {filter_dict[dat_key]}')
+                    print(f'    - filtering: {dat_key} with filters {filter_dict[dat_key]}')
 
                 if type(filter_dict[dat_key]) == int:
                     # just one number -> box type filter
@@ -289,19 +300,20 @@ def movingAverageFilterLine(lineData,
                                     '    integer (box filter), or \n' +
                                     '    list, [width_at_first_gate, width_at_last_gate] (trapeze filter)')
 
-            dBdt_df = copy.deepcopy(lineData.layer_data[dat_key].loc[filt, :])
-            inuse_df = lineData.layer_data[utils.inuse_moment(dat_key)].loc[filt, :]
-            dBdt_df[inuse_df == 0] = np.nan
+                dBdt_df = copy.deepcopy(lineData.layer_data[dat_key].loc[filt, :])
+                inuse_df = lineData.layer_data[utils.inuse_moment(dat_key)].loc[filt, :]
+                dBdt_df[inuse_df == 0] = np.nan
 
-            average_data, average_std = utils.rolling_mean_df(dBdt_df,
-                                                              rolling_lengths,
-                                                              error_calc_scheme='Unweighted_SEM')
+                average_data, average_std = utils.rolling_mean_df(dBdt_df,
+                                                                  rolling_lengths,
+                                                                  error_calc_scheme = 'STD')
 
-            lineData.layer_data[dat_key].loc[filt, :] = average_data
-            lineData.layer_data[std_key].loc[filt, :] = average_std
+                lineData.layer_data[dat_key].loc[filt, :] = average_data
+                lineData.layer_data[std_key].loc[filt, :] = average_std
 
-            lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
-            lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+                lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+                lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+
 
 def correct_data_tilt_for1D(processing: pipeline.ProcessingData,
                             verbose: bool = True):

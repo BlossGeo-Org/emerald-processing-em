@@ -288,7 +288,6 @@ def sampleDEM(DEMfilename,
         # else:
             # print(f'coordinates are inside raster bounds for projection: {dem.crs}')
 
-
     coord_list = [(x, y) for x, y in zip(geo_df["geometry"].x, geo_df["geometry"].y)]
     dtm_values = [x[0] for x in dem.sample(coord_list)]
     dem.close()
@@ -501,47 +500,6 @@ def get_min_periods(filter_length):
         return 1
 
 
-def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths,):
-    if len(rolling_lengths) == len(df_dat.columns):
-        # Calculate absolute errors
-        df_err_ab = df_dat * df_err_fp
-
-        # Prepare empty data frames
-        ave_dat = df_dat * np.nan
-        std_SST_err_ab = df_err_ab * np.nan
-
-        for filter_length, col in zip(rolling_lengths, df_dat.columns):
-            # Calculate the average of the data
-            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).mean()
-
-            # Calculate the SST error
-            for sid in range(0, len(df_dat[col])):
-                current_window = [int(sid - np.floor(filter_length / 2)), int(sid + np.floor(filter_length / 2) + 1)]
-                if current_window[0] < 0:
-                    current_window[0] = 0
-                if current_window[1] > len(df_dat[col]):
-                    current_window[1] = len(df_dat[col])
-                num_sample = int(current_window[1] - current_window[0])
-                if num_sample >= get_min_periods(filter_length):
-                    sample_weight = np.ones(num_sample)
-                    sample_data = df_dat[col].loc[current_window[0]: current_window[1] - 1].values
-                    sample_std = df_err_ab[col].loc[current_window[0]: current_window[1] - 1].values
-                    estimatedSST = np.sum(ave_dat[col].loc[current_window[0]: current_window[1] - 1].values / num_sample)
-
-                    var_est_SST = variance_averaging.calcVarSST(sample_weight, sample_data, sample_std, estimatedSST)
-                    std_est_SST = var_est_SST ** 0.5
-                    std_SST_err_ab.loc[sid, col] = std_est_SST
-
-        SST_frac_err = std_SST_err_ab / ave_dat
-
-        return ave_dat, SST_frac_err
-    else:
-        print(f'filter length: {len(rolling_lengths)}')
-        print(f'number of data columns: {len(df_dat.columns)}')
-        print(f'number of std columns: {len(df_err_fp.columns)}')
-        raise Exception('number of rolling filter lengths differs from number of columns in dataframe ')
-
-
 def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weighting_factor=3, error_calc_scheme='Weighted_SEM'):
     assert weighting_factor > 0, "weighting_factor must be greater than 0. Suggested ranges are between 1 [Weights are only based on the errors - errors will be smaller] and 10 [errors will be bigger]"
     if len(rolling_lengths) == len(df_dat.columns):
@@ -618,7 +576,53 @@ def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weig
         elif error_calc_scheme == 'Unweighted_SEM':
             return ave_dat, unweighted_SEM_frac_err
 
+    else:
+        print(f'filter length: {len(rolling_lengths)}')
+        print(f'number of data columns: {len(df_dat.columns)}')
+        print(f'number of std columns: {len(df_err_fp.columns)}')
+        raise Exception('number of rolling filter lengths differs from number of columns in dataframe ')
 
+
+def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
+    if len(rolling_lengths) == len(df_dat.columns):
+        index_shift = min(df_dat.index)
+
+        # Calculate absolute errors
+        df_err_ab = df_dat * df_err_fp
+
+        # Prepare empty data frames
+        ave_dat = df_dat * np.nan
+        std_SST_err_ab = df_err_ab * np.nan
+
+        for filter_length, col in zip(rolling_lengths, df_dat.columns):
+            # Calculate the average of the data
+            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).mean()
+
+            # Calculate the SST error
+            for sid in range(0, len(df_dat[col])):
+                current_window = [int(sid - np.floor(filter_length / 2)), int(sid + np.floor(filter_length / 2) + 1)]
+                if current_window[0] < 0:
+                    current_window[0] = 0
+                if current_window[1] > len(df_dat[col]):
+                    current_window[1] = len(df_dat[col])
+                num_sample = int(current_window[1] - current_window[0])
+
+                if num_sample >= get_min_periods(filter_length):
+                    sample_weight = np.ones(num_sample)
+                    sample_data =          df_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values
+                    sample_std =        df_err_ab[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values
+                    estimatedSST = np.sum(ave_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values / num_sample)
+
+                    var_est_SST = variance_averaging.calcVarSST(n=sample_weight,
+                                                                mu=sample_data,
+                                                                sd=sample_std,
+                                                                mu_tot=estimatedSST)
+                    std_est_SST = var_est_SST ** 0.5
+                    std_SST_err_ab.loc[sid + index_shift, col] = std_est_SST
+
+        SST_frac_err = np.abs(std_SST_err_ab / ave_dat)
+
+        return ave_dat, SST_frac_err
     else:
         print(f'filter length: {len(rolling_lengths)}')
         print(f'number of data columns: {len(df_dat.columns)}')
