@@ -176,14 +176,15 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     Parameters
     ----------
     filter_dict :
-        Dictionary describing the filter widths for the first and the last gate 
-        of each moment/channel . The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
+        Dictionary describing the filter widths, in number of soundings, centered on current sounding, for the first and the last time-gate
+        of each moment/channel. The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
+
     verbose :
         If True, more output about what the filter is doing
     """
     
     start = time.time()
-    print('  - Running a moving average filter  (line by line)')
+    print(f"  - Line-by-Line rolling window data averaging")
     data = processing.xyz
 
     filter_list_dict = {}
@@ -194,8 +195,10 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     layer_data_keys = data.layer_data.keys()
 
     assert sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0, f"********\n*\n* This is bad, there is no data found. layer_data key options are {layer_data_keys}\n*\n********"
+
     if verbose:
         print(f"    - Available keys are: {layer_data_keys}")
+
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
         print(f"  - Error estimates have been found! Using the 'SST_method' to calculate the average")
     elif sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0:
