@@ -22,6 +22,7 @@ from .parameter_types import HiddenBool
 from .parameter_types import Channel, ChannelAndGate, ChannelAndGateRange
 from .parameter_types import ShapeUrl, DistanceDict
 from .parameter_types import InversionModelUrls
+from .parameter_types import FlightLineColumnName, LayerDataName
 
 from .utils import calculate_transient_slopes, calculate_transient_curvatures
 from .utils import build_inuse_dataframe
@@ -1415,3 +1416,55 @@ def apply_gex(processing: pipeline.ProcessingData,
 
     end = time.time()
     print(f"  - Time used for applying the gex to the in-use flags: {end - start} sec.\n")
+
+
+def drop_column(processing: pipeline.ProcessingData,
+                orig: FlightLineColumnName):
+    """
+    Drop a column from the dataset (data.flightlines).
+        These are generally attributes in the dataset that are a single value for the sounding, like:
+            'tx_altitude', 'utm_x', 'utm_y', etc.
+        Useful to work around data import and source issues.
+        Warning: This will remove the data from the dataset
+
+    Parameters
+    ----------
+    orig :
+        The column to be dropped
+    """
+    start = time.time()
+    print(f'  - Dropping {orig} from the data.flightlines')
+
+    if orig not in processing.xyz.flightlines.columns:
+        raise ValueError(
+            "Unknown orig column name '%s' not in [%s]" % (orig, ", ".join(processing.xyz.flightlines.columns)))
+    processing.xyz.flightlines.drop(columns=[orig], inplace=True)
+
+    end = time.time()
+    print(f"  - Time used to drop a column from the dataset: {end - start} sec.\n")
+
+
+def drop_data(processing: pipeline.ProcessingData,
+                orig: LayerDataName):
+    """
+    Drop a group of data from the dataset (data.layer_data[orig]).
+        These are generally the per-timegate or per-layer dataframes
+            "Gate_Ch01", "InUse_Ch01", 'STD_Ch01', 'relErr_Ch01'
+        Useful to work around data import and source issues.
+        Warning: This will remove the data from the dataset
+
+    Parameters
+    ----------
+    orig :
+        The group of data to be dropped.
+    """
+    start = time.time()
+    print(f'  - Dropping {orig} from data.layer_data')
+
+    if orig not in processing.xyz.layer_data:
+        raise ValueError("Unknown orig channel name '%s' not in [%s]" % (orig, ", ".join(processing.xyz.layer_data.keys())))
+    removed_data = processing.xyz.layer_data.pop(orig)
+
+    end = time.time()
+    print(f"  - Time used to drop a data-group from the dataset: {end - start} sec.\n")
+
