@@ -48,6 +48,8 @@ setuptools.setup(
             'Rename Column=emeraldprocessing.tem.corrections:rename_column',
             'Rename Data=emeraldprocessing.tem.corrections:rename_data',
             # Cullings:
+            'Drop Column=emeraldprocessing.tem.culling:drop_column',
+            'Drop Data=emeraldprocessing.tem.culling:drop_data',
             'Apply gex=emeraldprocessing.tem.culling:apply_gex',
             'Enable/Disable gates by index=emeraldprocessing.tem.culling:enable_disable_time_gate',
             'Disable soundings by tilt and altitude=emeraldprocessing.tem.culling:cull_roll_pitch_alt',
