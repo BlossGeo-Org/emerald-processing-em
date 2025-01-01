@@ -574,36 +574,6 @@ def copy_column(processing: pipeline.ProcessingData,
     print(f"  - Time used to copy a column in the dataset: {end - start} sec.\n")
 
 
-def rename_column(processing: pipeline.ProcessingData,
-                  orig: FlightLineColumnName,
-                  new: str):
-    """
-    Rename a column in the dataset (data.flightlines).
-        These are generally attributes in the dataset that are a single value for the sounding, like:
-            'tx_altitude', 'utm_x', 'utm_y', etc.
-        Useful to work around data import and source issues.
-        Warning: This will overwrite data if the new column exists
-
-    Parameters
-    ----------
-    orig :
-        The column to be renamed
-    new :
-        The new name of the column
-    """
-    start = time.time()
-    print('  - Renaming a column in the dataset')
-    print(f"\t{orig} ––> {new}")
-
-    if orig not in processing.xyz.flightlines.columns:
-        raise ValueError(
-            "Unknown orig column name '%s' not in [%s]" % (orig, ", ".join(processing.xyz.flightlines.columns)))
-    processing.xyz.flightlines.rename(columns={orig: new}, inplace=True)
-
-    end = time.time()
-    print(f"  - Time used to rename a column in the dataset: {end - start} sec.\n")
-
-
 def copy_data(processing: pipeline.ProcessingData,
                 orig: LayerDataName,
                 new: str):
@@ -633,6 +603,36 @@ def copy_data(processing: pipeline.ProcessingData,
 
     end = time.time()
     print(f"  - Time used to rename a group in the dataset: {end - start} sec.\n")
+
+
+def rename_column(processing: pipeline.ProcessingData,
+                  orig: FlightLineColumnName,
+                  new: str):
+    """
+    Rename a column in the dataset (data.flightlines).
+        These are generally attributes in the dataset that are a single value for the sounding, like:
+            'tx_altitude', 'utm_x', 'utm_y', etc.
+        Useful to work around data import and source issues.
+        Warning: This will overwrite data if the new column exists
+
+    Parameters
+    ----------
+    orig :
+        The column to be renamed
+    new :
+        The new name of the column
+    """
+    start = time.time()
+    print('  - Renaming a column in the dataset')
+    print(f"\t{orig} ––> {new}")
+
+    if orig not in processing.xyz.flightlines.columns:
+        raise ValueError(
+            "Unknown orig column name '%s' not in [%s]" % (orig, ", ".join(processing.xyz.flightlines.columns)))
+    processing.xyz.flightlines.rename(columns={orig: new}, inplace=True)
+
+    end = time.time()
+    print(f"  - Time used to rename a column in the dataset: {end - start} sec.\n")
 
 
 def rename_data(processing: pipeline.ProcessingData,
