@@ -475,6 +475,11 @@ def add_std_error(processing: pipeline.ProcessingData,
 
     std_data.loc[:, cols] = std_data.loc[:, cols] + error_fraction
 
+    # Bounds checking: clamp STD values to valid range (0.1% to 100%)
+    MIN_STD = 0.001  # 0.1% minimum
+    MAX_STD = 1.0    # 100% maximum
+    std_data.loc[:, cols] = std_data.loc[:, cols].clip(lower=MIN_STD, upper=MAX_STD)
+
     data.layer_data[ld_std_key] = std_data
     end = time.time()
     print(f"  - Time used to add STD errors to data: {end - start} sec.\n")

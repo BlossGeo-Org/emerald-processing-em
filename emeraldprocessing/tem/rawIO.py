@@ -128,7 +128,7 @@ def regression_based_std_for_df(df, order=1):
             y=df[col].values
             coeff = np.polyfit(x, y, order)
             p = np.poly1d(coeff)
-            s_out[col]=np.std(y-p(x))
+            s_out[col]=np.std(y-p(x), ddof=1)
     return s_out
 
 def stackVoltageData(data, regression_based_std=0, verbose=False):
@@ -162,7 +162,8 @@ def stackVoltageData(data, regression_based_std=0, verbose=False):
         else:
             df_std=df.groupby('group').std()
         
-        df_std=df_std/df_mean.abs() # want std in percent not absolute
+        epsilon = 1e-12
+        df_std=df_std/(df_mean.abs() + epsilon) # want std in percent not absolute
         df_std['epoch_time']=df_mean['epoch_time']
         col_rename_dict={}
         col_drop_list=[]

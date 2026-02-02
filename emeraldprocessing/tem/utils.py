@@ -642,8 +642,9 @@ def rolling_mean_df(df_dat, rolling_lengths, error_calc_scheme='Unweighted_SEM')
             std_err_df[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).std()
 
             # Calculate the unweighted Standard Error of the Mean
-            unweighted_SEM_df[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).std() / \
-                                     np.sqrt(filter_length)
+            rolling_std = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).std()
+            actual_count = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).count()
+            unweighted_SEM_df[col] = rolling_std / np.sqrt(actual_count)
 
             ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).mean()
 
