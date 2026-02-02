@@ -718,9 +718,9 @@ def cull_max_slope(processing: pipeline.ProcessingData,
         describe_slope.loc['mean', 'all'] = (describe_slope.loc['mean', :] * describe_slope.loc['count',
                                                                                      :]).sum() / describe_slope.loc[
                                                     'count', 'all']
-        describe_slope.loc['std', 'all'] = (describe_slope.loc['std', :] * describe_slope.loc['count',
+        describe_slope.loc['std', 'all'] = np.sqrt(((describe_slope.loc['std', :] ** 2) * describe_slope.loc['count',
                                                                                    :]).sum() / describe_slope.loc[
-                                                   'count', 'all']
+                                                   'count', 'all'])
         describe_slope.loc['min', 'all'] = describe_slope.loc['min', :].min()
         describe_slope.loc['max', 'all'] = describe_slope.loc['max', :].max()
         describe_slope = describe_slope.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -736,9 +736,9 @@ def cull_max_slope(processing: pipeline.ProcessingData,
         describe_slope.loc['mean', 'all'] = (describe_slope.loc['mean', :] * describe_slope.loc['count',
                                                                                      :]).sum() / describe_slope.loc[
                                                     'count', 'all']
-        describe_slope.loc['std', 'all'] = (describe_slope.loc['std', :] * describe_slope.loc['count',
+        describe_slope.loc['std', 'all'] = np.sqrt(((describe_slope.loc['std', :] ** 2) * describe_slope.loc['count',
                                                                                    :]).sum() / describe_slope.loc[
-                                                   'count', 'all']
+                                                   'count', 'all'])
         describe_slope.loc['min', 'all'] = describe_slope.loc['min', :].min()
         describe_slope.loc['max', 'all'] = describe_slope.loc['max', :].max()
         describe_slope = describe_slope.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -837,9 +837,9 @@ def cull_min_slope(processing: pipeline.ProcessingData,
         describe_slope.loc['mean', 'all'] = (describe_slope.loc['mean', :] * describe_slope.loc['count',
                                                                                      :]).sum() / describe_slope.loc[
                                                     'count', 'all']
-        describe_slope.loc['std', 'all'] = (describe_slope.loc['std', :] * describe_slope.loc['count',
+        describe_slope.loc['std', 'all'] = np.sqrt(((describe_slope.loc['std', :] ** 2) * describe_slope.loc['count',
                                                                                    :]).sum() / describe_slope.loc[
-                                                   'count', 'all']
+                                                   'count', 'all'])
         describe_slope.loc['min', 'all'] = describe_slope.loc['min', :].min()
         describe_slope.loc['max', 'all'] = describe_slope.loc['max', :].max()
         describe_slope = describe_slope.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -855,9 +855,9 @@ def cull_min_slope(processing: pipeline.ProcessingData,
         describe_slope.loc['mean', 'all'] = (describe_slope.loc['mean', :] * describe_slope.loc['count',
                                                                                      :]).sum() / describe_slope.loc[
                                                     'count', 'all']
-        describe_slope.loc['std', 'all'] = (describe_slope.loc['std', :] * describe_slope.loc['count',
+        describe_slope.loc['std', 'all'] = np.sqrt(((describe_slope.loc['std', :] ** 2) * describe_slope.loc['count',
                                                                                    :]).sum() / describe_slope.loc[
-                                                   'count', 'all']
+                                                   'count', 'all'])
         describe_slope.loc['min', 'all'] = describe_slope.loc['min', :].min()
         describe_slope.loc['max', 'all'] = describe_slope.loc['max', :].max()
         describe_slope = describe_slope.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -960,7 +960,7 @@ def cull_max_curvature(processing: pipeline.ProcessingData,
         describe_curvature = curvature.describe()
         describe_curvature.loc['count', 'all'] = describe_curvature.loc['count', :].sum()
         describe_curvature.loc['mean', 'all'] = (describe_curvature.loc['mean', :] * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
-        describe_curvature.loc['std', 'all'] =  (describe_curvature.loc['std', :]  * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
+        describe_curvature.loc['std', 'all'] = np.sqrt(((describe_curvature.loc['std', :] ** 2) * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all'])
         describe_curvature.loc['min', 'all'] = describe_curvature.loc['min', :].min()
         describe_curvature.loc['max', 'all'] = describe_curvature.loc['max', :].max()
         describe_curvature = describe_curvature.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -974,7 +974,7 @@ def cull_max_curvature(processing: pipeline.ProcessingData,
         describe_curvature = describe_curvature.describe()
         describe_curvature.loc['count', 'all'] = describe_curvature.loc['count', :].sum()
         describe_curvature.loc['mean', 'all'] = (describe_curvature.loc['mean', :] * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
-        describe_curvature.loc['std', 'all'] =  (describe_curvature.loc['std', :]  * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
+        describe_curvature.loc['std', 'all'] = np.sqrt(((describe_curvature.loc['std', :] ** 2) * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all'])
         describe_curvature.loc['min', 'all'] = describe_curvature.loc['min', :].min()
         describe_curvature.loc['max', 'all'] = describe_curvature.loc['max', :].max()
         describe_curvature = describe_curvature.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -1077,7 +1077,7 @@ def cull_min_curvature(processing: pipeline.ProcessingData,
         describe_curvature = curvature.describe()
         describe_curvature.loc['count', 'all'] = describe_curvature.loc['count', :].sum()
         describe_curvature.loc['mean', 'all'] = (describe_curvature.loc['mean', :] * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
-        describe_curvature.loc['std', 'all'] =  (describe_curvature.loc['std', :]  * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
+        describe_curvature.loc['std', 'all'] = np.sqrt(((describe_curvature.loc['std', :] ** 2) * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all'])
         describe_curvature.loc['min', 'all'] = describe_curvature.loc['min', :].min()
         describe_curvature.loc['max', 'all'] = describe_curvature.loc['max', :].max()
         describe_curvature = describe_curvature.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
@@ -1091,7 +1091,7 @@ def cull_min_curvature(processing: pipeline.ProcessingData,
         describe_curvature = describe_curvature.describe()
         describe_curvature.loc['count', 'all'] = describe_curvature.loc['count', :].sum()
         describe_curvature.loc['mean', 'all'] = (describe_curvature.loc['mean', :] * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
-        describe_curvature.loc['std', 'all'] =  (describe_curvature.loc['std', :]  * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all']
+        describe_curvature.loc['std', 'all'] = np.sqrt(((describe_curvature.loc['std', :] ** 2) * describe_curvature.loc['count', :]).sum() / describe_curvature.loc['count', 'all'])
         describe_curvature.loc['min', 'all'] = describe_curvature.loc['min', :].min()
         describe_curvature.loc['max', 'all'] = describe_curvature.loc['max', :].max()
         describe_curvature = describe_curvature.loc[['count', 'mean', 'std', 'min', 'max'], :].T.round(3)
