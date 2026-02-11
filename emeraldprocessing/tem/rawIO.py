@@ -362,9 +362,9 @@ def normalize_with_TxDipoleMoment_XYZ(data, gex):
             current_key='Current_'+channel
             dB_dt_df=data['layer_data'][moment]
             if 'Ch01' in moment:
-                nTurns=gex['General']['NumberOfTurnsLM']
+                nTurns=gex['General'].get('NumberOfTurnsLM', gex['General'].get('NumberOfTurns'))
             elif 'Ch02' in moment:
-                nTurns=gex['General']['NumberOfTurnsHM']
+                nTurns=gex['General'].get('NumberOfTurnsHM', gex['General'].get('NumberOfTurns'))
             else:
                 raise Exception('No number of turns found for moment: {}'.format(moment))
             

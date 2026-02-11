@@ -31,13 +31,15 @@ def makeGateTimesDipoleMoments(processing):
     processing.ApproxDipoleMoment={}
     #Data['DipoleMoment']={}
     processing.GateTimes['Gate_Ch01']=getGateTimesFromGEX(gex, 'Channel1')[:,0]
-    processing.ApproxDipoleMoment['Gate_Ch01']=gex_dict["General"]["NumberOfTurnsLM"] * gex_dict["General"]["TxLoopArea"] * gex_dict["Channel1"]["TxApproximateCurrent"]
-    Data.flightlines['DipoleMoment_Ch01']=gex_dict["General"]["NumberOfTurnsLM"] * gex_dict["General"]["TxLoopArea"] * Data.flightlines['Current_Ch01']
-    
+    nturns_ch01 = gex_dict["General"].get("NumberOfTurnsLM", gex_dict["General"].get("NumberOfTurns"))
+    processing.ApproxDipoleMoment['Gate_Ch01']=nturns_ch01 * gex_dict["General"]["TxLoopArea"] * gex_dict["Channel1"]["TxApproximateCurrent"]
+    Data.flightlines['DipoleMoment_Ch01']=nturns_ch01 * gex_dict["General"]["TxLoopArea"] * Data.flightlines['Current_Ch01']
+
     if 'Channel2' in gex_dict.keys():
         processing.GateTimes['Gate_Ch02']=getGateTimesFromGEX(gex, 'Channel2')[:,0]
-        processing.ApproxDipoleMoment['Gate_Ch02']=gex_dict["General"]["NumberOfTurnsHM"] * gex_dict["General"]["TxLoopArea"] * gex_dict["Channel2"]["TxApproximateCurrent"]
-        Data.flightlines['DipoleMoment_Ch02']=gex_dict["General"]["NumberOfTurnsHM"] * gex_dict["General"]["TxLoopArea"] * Data.flightlines['Current_Ch02']
+        nturns_ch02 = gex_dict["General"].get("NumberOfTurnsHM", gex_dict["General"].get("NumberOfTurns"))
+        processing.ApproxDipoleMoment['Gate_Ch02']=nturns_ch02 * gex_dict["General"]["TxLoopArea"] * gex_dict["Channel2"]["TxApproximateCurrent"]
+        Data.flightlines['DipoleMoment_Ch02']=nturns_ch02 * gex_dict["General"]["TxLoopArea"] * Data.flightlines['Current_Ch02']
         
 def readWBxyz(xyz_file, gex_file, dummi_value='*', removeInititalGates=False, tilt_angle_reference=0):
     gex=libaarhusxyz.GEX(gex_file)
