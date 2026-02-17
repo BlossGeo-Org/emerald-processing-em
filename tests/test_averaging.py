@@ -10,6 +10,7 @@ import pytest
 from emeraldprocessing.tem.utils import (
     alpha_trim,
     get_min_periods,
+    inverse_variance_weights,
     rolling_hybrid_mean_df
 )
 
@@ -95,3 +96,46 @@ def test_hybrid_small_filter_length_produces_output():
     assert valid_count == n_soundings, (
         f"All {n_soundings} soundings should have valid early gate data, got {valid_count}"
     )
+
+
+def test_inverse_variance_weights_zero_error():
+    """
+    Regression test for issue #766 follow-up: near-zero data values with
+    fractional error model produce zero absolute errors, causing infinite
+    IVW weights and NaN/10^-18 artifacts in the weighted mean.
+
+    The error floor prevents zero-error values from dominating.
+    """
+    # Late gate scenario: one value is exactly 0.0, others are small
+    errors = np.array([0.0, 0.0002, 0.0009])
+    w = inverse_variance_weights(errors)
+
+    assert not np.any(np.isinf(w)), "Weights must not be infinite"
+    assert not np.any(np.isnan(w)), "Weights must not be NaN"
+
+
+def test_hybrid_near_zero_data_no_artifacts():
+    """
+    Regression test for issue #766 follow-up: averaging late gate data
+    with values near zero must not produce tiny artifacts (10^-18).
+
+    With fractional errors, value=0.0 gets abs_err=0.0, which without
+    a floor gives infinite weight, pulling the average to ~0 or NaN.
+    """
+    n = 10
+    # Late gate data with a zero value and noise-floor values
+    data = pd.DataFrame({'col': [0.0, 0.2, -0.9, -6.6, -1.2,
+                                  -2.8, -4.0, -3.7, -4.7, -3.3]})
+    errors = pd.DataFrame({'col': [0.001] * n})
+    rolling_lengths = [5]
+
+    ave, err = rolling_hybrid_mean_df(data, errors, rolling_lengths)
+
+    # No averaged value should be smaller than ~0.01 in magnitude
+    # (the raw data ranges from -6.6 to 0.2, so averages should be in that range)
+    for i in range(n):
+        val = ave.loc[i, 'col']
+        if not np.isnan(val):
+            assert abs(val) > 1e-10, (
+                f"Sounding {i}: averaged value {val:.2e} is suspiciously tiny"
+            )

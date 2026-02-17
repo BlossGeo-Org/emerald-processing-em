@@ -568,10 +568,20 @@ def inverse_variance_weights(errors, max_weight_factor=10.0):
     weights : ndarray
         Weights (not normalized, for use with variance_averaging functions)
     """
-    errors = np.asarray(errors)
+    errors = np.asarray(errors, dtype=float)
+
+    # Floor near-zero errors to prevent infinite weights.
+    # With fractional error models (abs_err = value * frac_err), near-zero
+    # data values get near-zero errors, implying false infinite precision.
+    # Use the median absolute error as the noise floor.
+    abs_errors = np.abs(errors)
+    nonzero = abs_errors[abs_errors > 0]
+    if len(nonzero) > 0:
+        err_floor = np.median(nonzero)
+        abs_errors = np.maximum(abs_errors, err_floor)
 
     # Inverse variance weighting
-    variances = errors ** 2
+    variances = abs_errors ** 2
     weights = 1.0 / variances
 
     # Cap weights to prevent dominance
