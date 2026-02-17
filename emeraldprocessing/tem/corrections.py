@@ -163,6 +163,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
                                                                                  'width_at_last_gate': 5},
                                                                   'Gate_Ch02': {'width_at_first_gate': 5,
                                                                                  'width_at_last_gate': 9}},
+                          averaging_method: str = 'hybrid',
                           verbose: bool = False):
     """
     Moving average filter, averaging Gate values from neighboring soundings.
@@ -178,6 +179,13 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     filter_dict :
         Dictionary describing the filter widths, in number of soundings, centered on current sounding, for the first and the last time-gate
         of each moment/channel. The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
+
+    averaging_method :
+        Method for computing rolling averages when error estimates exist. Options:
+        - 'hybrid' (default): Uses alpha-trim + inverse variance weighting. Recommended for
+          robust handling of outliers and proper NaN handling near culled data regions.
+        - 'SST': Uses original Sum-of-Squares-of-Total method (rolling_SST_mean_df).
+        - 'simple': Uses simple rolling mean without weighting (rolling_mean_df).
 
     verbose :
         If True, more output about what the filter is doing
@@ -200,16 +208,17 @@ def moving_average_filter(processing: pipeline.ProcessingData,
         print(f"    - Available keys are: {layer_data_keys}")
 
     if sum([(std_key_prefix in key) for key in layer_data_keys]) > 0:
-        print(f"  - Error estimates have been found! Using the 'SST_method' to calculate the average")
+        print(f"  - Error estimates have been found! Using the '{averaging_method}' method to calculate the average")
     elif sum([(dat_key_prefix in key) for key in layer_data_keys]) > 0:
         print(f"  - Found the data but no error estimates. Will calculate errors using the 'STD' method")
 
     lines = utils.splitData_lines(data, line_key='Line')
     for line in lines.keys():
-        if verbose: 
+        if verbose:
             print(f'  - Filtering line: {line}')
         movingAverageFilterLine(lines[line],
                                 filter_list_dict,
+                                averaging_method=averaging_method,
                                 verbose=verbose)
     processing.xyz = utils.merge_lines(lines)
     end = time.time()
@@ -218,6 +227,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 
 def movingAverageFilterLine(lineData,
                             filter_dict,
+                            averaging_method='hybrid',
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
 
@@ -260,9 +270,22 @@ def movingAverageFilterLine(lineData,
             dBdt_df[inuse_df == 0] = np.nan
             std_df[inuse_df == 0] = np.nan
 
-            average_data, average_std = utils.rolling_SST_mean_df(dBdt_df,
-                                                                  std_df,
-                                                                  rolling_lengths)
+            # Select averaging method based on parameter
+            if averaging_method == 'hybrid':
+                average_data, average_std = utils.rolling_hybrid_mean_df(dBdt_df,
+                                                                          std_df,
+                                                                          rolling_lengths)
+            elif averaging_method == 'SST':
+                average_data, average_std = utils.rolling_SST_mean_df(dBdt_df,
+                                                                      std_df,
+                                                                      rolling_lengths)
+            elif averaging_method == 'simple':
+                average_data, average_std = utils.rolling_mean_df(dBdt_df,
+                                                                  rolling_lengths,
+                                                                  error_calc_scheme='STD')
+            else:
+                raise ValueError(f"Unknown averaging_method '{averaging_method}'. "
+                               f"Choose from: 'hybrid', 'SST', 'simple'")
 
             lineData.layer_data[dat_key].loc[filt, :] = average_data
             lineData.layer_data[std_key].loc[filt, :] = average_std

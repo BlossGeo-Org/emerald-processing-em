@@ -493,11 +493,190 @@ def interpolate_rolling_size_for_all_gates(filterlist, moment):
     ni = f(ci)
     return [round_to_odd(n) for n in ni]
 
-def get_min_periods(filter_length):
+def get_min_periods(filter_length, min_fraction=0.35):
+    """
+    Calculate minimum periods as a fraction of filter length.
+
+    Parameters
+    ----------
+    filter_length : int
+        The rolling window size
+    min_fraction : float, default 0.35
+        Minimum fraction of window that must have valid data.
+        Default 0.35 (35%) aligns with Workbench typical settings of 30-45%.
+
+    Returns
+    -------
+    int
+        Minimum number of valid samples required
+    """
     if filter_length > 1:
-        return np.ceil(filter_length/2).astype(int)
+        return max(2, int(np.ceil(filter_length * min_fraction)))
     else:
         return 1
+
+
+def alpha_trim(data, errors, alpha=0.1):
+    """
+    Remove top and bottom alpha fraction of data points.
+
+    Parameters
+    ----------
+    data : array-like
+        Data values (NaN already removed)
+    errors : array-like
+        Error estimates corresponding to data
+    alpha : float, default 0.1
+        Fraction to trim from each end (0.1 = 10% from each end)
+
+    Returns
+    -------
+    trimmed_data : ndarray
+        Data with extreme values removed
+    trimmed_errors : ndarray
+        Corresponding errors
+    """
+    n = len(data)
+    if n < 3:  # Can't trim if too few points
+        return np.asarray(data), np.asarray(errors)
+
+    n_trim = max(1, int(n * alpha))
+    if 2 * n_trim >= n:  # Would trim everything
+        return np.asarray(data), np.asarray(errors)
+
+    # Sort by data value, trim extremes
+    sort_idx = np.argsort(data)
+    keep_idx = sort_idx[n_trim:-n_trim] if n_trim > 0 else sort_idx
+
+    return np.asarray(data)[keep_idx], np.asarray(errors)[keep_idx]
+
+
+def inverse_variance_weights(errors, max_weight_factor=10.0):
+    """
+    Calculate inverse variance weights with cap to prevent dominance.
+
+    Parameters
+    ----------
+    errors : array-like
+        Error estimates (standard deviations)
+    max_weight_factor : float, default 10.0
+        Maximum weight as multiple of median weight.
+        Prevents single low-error measurement from dominating.
+
+    Returns
+    -------
+    weights : ndarray
+        Weights (not normalized, for use with variance_averaging functions)
+    """
+    errors = np.asarray(errors)
+
+    # Inverse variance weighting
+    variances = errors ** 2
+    weights = 1.0 / variances
+
+    # Cap weights to prevent dominance
+    median_weight = np.median(weights)
+    max_weight = median_weight * max_weight_factor
+    weights = np.minimum(weights, max_weight)
+
+    return weights
+
+
+def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
+                           alpha=0.1, min_fraction=0.35, max_weight_factor=10.0):
+    """
+    Rolling average with hybrid alpha-trim + inverse variance weighting.
+
+    This method:
+    1. Excludes NaN values (culled data)
+    2. Alpha trims extreme values for robustness
+    3. Applies inverse variance weighting for optimal estimation
+    4. Computes combined uncertainty using SST formula with weights
+
+    Parameters
+    ----------
+    df_dat : DataFrame
+        Data values
+    df_err_fp : DataFrame
+        Fractional error estimates (STD / value)
+    rolling_lengths : list
+        Window size for each column (gate)
+    alpha : float, default 0.1
+        Fraction to trim from each end (0.1 = 10%)
+    min_fraction : float, default 0.35
+        Minimum fraction of window needed for valid output
+    max_weight_factor : float, default 10.0
+        Cap for inverse variance weights
+
+    Returns
+    -------
+    ave_dat : DataFrame
+        Weighted averaged data
+    frac_err : DataFrame
+        Fractional error of averaged data
+    """
+    if len(rolling_lengths) != len(df_dat.columns):
+        raise ValueError(f'Number of rolling filter lengths ({len(rolling_lengths)}) '
+                        f'differs from number of columns ({len(df_dat.columns)})')
+
+    index_shift = min(df_dat.index)
+
+    # Calculate absolute errors
+    df_err_ab = df_dat * df_err_fp
+
+    # Prepare output dataframes
+    ave_dat = df_dat * np.nan
+    std_err_ab = df_err_ab * np.nan
+
+    for filter_length, col in zip(rolling_lengths, df_dat.columns):
+        min_periods = get_min_periods(filter_length, min_fraction)
+
+        for sid in range(len(df_dat[col])):
+            # Define window bounds
+            half_window = int(np.floor(filter_length / 2))
+            win_start = max(0, sid - half_window)
+            win_end = min(len(df_dat[col]), sid + half_window + 1)
+
+            # Extract window data
+            window_data = df_dat[col].loc[win_start + index_shift: win_end - 1 + index_shift]
+            window_err = df_err_ab[col].loc[win_start + index_shift: win_end - 1 + index_shift]
+
+            # Filter NaN values
+            valid_mask = window_data.notna() & window_err.notna()
+            valid_data = window_data[valid_mask].values
+            valid_err = window_err[valid_mask].values
+
+            if len(valid_data) < min_periods:
+                continue  # Not enough valid samples
+
+            # Alpha trim
+            trimmed_data, trimmed_err = alpha_trim(valid_data, valid_err, alpha)
+
+            if len(trimmed_data) < 2:
+                continue  # Need at least 2 for variance
+
+            # Calculate inverse variance weights
+            weights = inverse_variance_weights(trimmed_err, max_weight_factor)
+
+            # Weighted mean
+            weighted_mean = np.sum(weights * trimmed_data) / np.sum(weights)
+
+            # Calculate variance using SST formula with weights
+            var_est = variance_averaging.calcVarSST(
+                n=weights,
+                mu=trimmed_data,
+                sd=trimmed_err,
+                mu_tot=weighted_mean
+            )
+
+            # Store results
+            ave_dat.loc[sid + index_shift, col] = weighted_mean
+            std_err_ab.loc[sid + index_shift, col] = np.sqrt(var_est)
+
+    # Convert to fractional error
+    frac_err = np.abs(std_err_ab / ave_dat)
+
+    return ave_dat, frac_err
 
 
 def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weighting_factor=3, error_calc_scheme='Weighted_SEM'):
@@ -605,13 +784,19 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
                     current_window[0] = 0
                 if current_window[1] > len(df_dat[col]):
                     current_window[1] = len(df_dat[col])
-                num_sample = int(current_window[1] - current_window[0])
+                # Extract window data and errors
+                window_data = df_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift]
+                window_std = df_err_ab[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift]
+
+                # Create mask for valid (non-NaN) values in both data and error
+                valid_mask = window_data.notna() & window_std.notna()
+                num_sample = valid_mask.sum()
 
                 if num_sample >= get_min_periods(filter_length):
+                    sample_data = window_data[valid_mask].values
+                    sample_std = window_std[valid_mask].values
                     sample_weight = np.ones(num_sample)
-                    sample_data =          df_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values
-                    sample_std =        df_err_ab[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values
-                    estimatedSST = np.sum(ave_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift].values / num_sample)
+                    estimatedSST = ave_dat[col].loc[current_window[0] + index_shift: current_window[1] - 1 + index_shift][valid_mask].mean()
 
                     var_est_SST = variance_averaging.calcVarSST(n=sample_weight,
                                                                 mu=sample_data,
