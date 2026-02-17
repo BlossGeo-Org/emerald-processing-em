@@ -540,7 +540,7 @@ def alpha_trim(data, errors, alpha=0.1):
     if n < 3:  # Can't trim if too few points
         return np.asarray(data), np.asarray(errors)
 
-    n_trim = max(1, int(n * alpha))
+    n_trim = int(n * alpha)
     if 2 * n_trim >= n:  # Would trim everything
         return np.asarray(data), np.asarray(errors)
 
