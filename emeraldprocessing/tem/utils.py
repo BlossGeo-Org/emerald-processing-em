@@ -314,6 +314,29 @@ def calculate_transient_slopes(processing, data_key):
     l10_dBdt_df, l10_gate_times_df = build_l10_dBdt_time_df(processing, data_key)
 
     slope = (l10_dBdt_df.diff(axis=1) / l10_gate_times_df.diff(axis=1))
+
+    # Guard 1: Mask slopes where gate time spacing is too small for reliable
+    # finite-difference computation (noise dominates the tiny denominator).
+    # HeliTEM early gates have Δlog10(t) ≈ 0.001; SkyTEM ≈ 0.085.
+    min_log_time_spacing = 0.01
+    gate_time_diffs = l10_gate_times_df.diff(axis=1).iloc[0]
+    narrow_gates = gate_time_diffs < min_log_time_spacing
+    for col in slope.columns:
+        if narrow_gates.get(col, False):
+            slope[col] = np.nan
+
+    # Guard 2: Mask slopes where original data changes sign between adjacent
+    # gates. After abs() + log10(), sign changes create artificial V-shaped
+    # dips that produce meaningless extreme slopes.
+    original_data = processing.xyz.layer_data[data_key]
+    prev_data = original_data.shift(1, axis=1)
+    sign_change_or_zero = (
+        (original_data * prev_data < 0) |  # different signs
+        (original_data == 0) |               # current gate is zero
+        (prev_data == 0)                     # previous gate is zero
+    )
+    slope[sign_change_or_zero] = np.nan
+
     return slope
 
 
@@ -342,6 +365,33 @@ def calculate_transient_curvatures(processing, data_key):
 
     curvature = curvature_stack.unstack()
     curvature = curvature.reset_index(drop=True)
+
+    # Guard 1: Mask curvatures where gate time spacing is too small.
+    # Curvature uses (t_{k+1} - t_{k-1})^2 denominator — even more sensitive.
+    min_log_time_spacing = 0.01
+    l10_gate_times = np.log10(copy.copy(processing.GateTimes[data_key]))
+    gate_spans = np.diff(l10_gate_times[~np.isnan(l10_gate_times)])
+    for col_idx in range(len(curvature.columns)):
+        # Curvature at gate k uses gates k-1, k, k+1
+        if col_idx == 0 or col_idx >= len(gate_spans):
+            continue
+        if gate_spans[col_idx - 1] < min_log_time_spacing or gate_spans[col_idx] < min_log_time_spacing:
+            curvature.iloc[:, col_idx] = np.nan
+
+    # Guard 2: Mask curvatures where original data has sign changes or zeros.
+    # Curvature at gate k involves gates k-1, k, k+1 — any sign issue taints it.
+    original_data = processing.xyz.layer_data[data_key]
+    for col_idx in range(1, len(curvature.columns) - 1):
+        col = curvature.columns[col_idx]
+        orig_col = original_data.columns[col_idx]
+        prev_col = original_data.columns[col_idx - 1]
+        next_col = original_data.columns[col_idx + 1]
+        bad_mask = (
+            (original_data[orig_col] <= 0) |
+            (original_data[prev_col] <= 0) |
+            (original_data[next_col] <= 0)
+        )
+        curvature.loc[bad_mask, col] = np.nan
 
     return curvature
 
