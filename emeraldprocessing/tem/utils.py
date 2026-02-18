@@ -551,7 +551,7 @@ def alpha_trim(data, errors, alpha=0.1):
     return np.asarray(data)[keep_idx], np.asarray(errors)[keep_idx]
 
 
-def inverse_variance_weights(errors, max_weight_factor=10.0):
+def inverse_variance_weights(errors, max_weight_factor=10.0, err_floor=None):
     """
     Calculate inverse variance weights with cap to prevent dominance.
 
@@ -562,6 +562,11 @@ def inverse_variance_weights(errors, max_weight_factor=10.0):
     max_weight_factor : float, default 10.0
         Maximum weight as multiple of median weight.
         Prevents single low-error measurement from dominating.
+    err_floor : float or None, default None
+        External minimum error floor (e.g. from the full gate column).
+        When provided, ensures windows with all-zero errors still get
+        a meaningful floor. The effective floor is the max of this and
+        the per-window median.
 
     Returns
     -------
@@ -573,12 +578,18 @@ def inverse_variance_weights(errors, max_weight_factor=10.0):
     # Floor near-zero errors to prevent infinite weights.
     # With fractional error models (abs_err = value * frac_err), near-zero
     # data values get near-zero errors, implying false infinite precision.
-    # Use the median absolute error as the noise floor.
     abs_errors = np.abs(errors)
     nonzero = abs_errors[abs_errors > 0]
-    if len(nonzero) > 0:
-        err_floor = np.median(nonzero)
-        abs_errors = np.maximum(abs_errors, err_floor)
+    window_floor = np.median(nonzero) if len(nonzero) > 0 else 0.0
+
+    # Use the larger of the per-window floor and the external gate-level floor
+    effective_floor = max(window_floor, err_floor or 0.0)
+
+    if effective_floor > 0:
+        abs_errors = np.maximum(abs_errors, effective_floor)
+    else:
+        # No error information at all — fall back to equal weights
+        return np.ones(len(errors))
 
     # Inverse variance weighting
     variances = abs_errors ** 2
@@ -634,6 +645,16 @@ def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
     # Calculate absolute errors
     df_err_ab = df_dat * df_err_fp
 
+    # Pre-compute per-gate error floor from the full line context.
+    # This prevents all-zero windows (common in late gates at the noise floor)
+    # from producing NaN via the inf*0 path. The gate-level floor reflects
+    # the typical error magnitude across the entire line for that gate.
+    gate_err_floors = {}
+    for col in df_dat.columns:
+        col_abs_err = np.abs(df_err_ab[col].dropna())
+        nonzero = col_abs_err[col_abs_err > 0]
+        gate_err_floors[col] = np.median(nonzero) if len(nonzero) > 0 else 0.0
+
     # Prepare output dataframes
     ave_dat = df_dat * np.nan
     std_err_ab = df_err_ab * np.nan
@@ -665,11 +686,22 @@ def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
             if len(trimmed_data) < 2:
                 continue  # Need at least 2 for variance
 
-            # Calculate inverse variance weights
-            weights = inverse_variance_weights(trimmed_err, max_weight_factor)
+            # Calculate inverse variance weights with gate-level error floor
+            weights = inverse_variance_weights(trimmed_err, max_weight_factor,
+                                               err_floor=gate_err_floors[col])
 
             # Weighted mean
             weighted_mean = np.sum(weights * trimmed_data) / np.sum(weights)
+
+            # Guard against floating-point cancellation artifacts.
+            # When window values nearly cancel (e.g. [0.3, -0.3, 0.1, -0.1]),
+            # both IVW weighted mean and simple mean can produce tiny ghost
+            # values (~1e-18) from floating-point residuals. If the result
+            # is >12 orders of magnitude smaller than the data, it's an
+            # artifact — the true average is effectively zero.
+            mean_abs = np.mean(np.abs(trimmed_data))
+            if mean_abs > 0 and abs(weighted_mean) / mean_abs < 1e-12:
+                weighted_mean = 0.0
 
             # Calculate variance using SST formula with weights
             var_est = variance_averaging.calcVarSST(

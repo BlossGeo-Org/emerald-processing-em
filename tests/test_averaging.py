@@ -139,3 +139,103 @@ def test_hybrid_near_zero_data_no_artifacts():
             assert abs(val) > 1e-10, (
                 f"Sounding {i}: averaged value {val:.2e} is suspiciously tiny"
             )
+
+
+def test_all_zero_window_no_nan():
+    """
+    Regression test: consecutive zero-valued soundings in a late gate must
+    not produce NaN output.
+
+    Bug: When ALL data values in a window are 0.0, absolute errors are all 0.0.
+    The per-window error floor has no nonzero values, so no floor is applied.
+    Weights become inf, and inf * 0 = nan, producing NaN output.
+
+    Fix: A per-gate error floor computed from the full line ensures windows
+    with all-zero data get a meaningful floor. When no gate-level floor
+    exists either, equal weights are used instead of 1/0.
+    """
+    n = 20
+    # Simulate a late gate: mostly zeros with a few nonzero values at the ends.
+    # Soundings 6-14 are all zero — a 9-sounding stretch of zeros.
+    values = [0.5, 0.3, 0.1, -0.1, -0.2, 0.1,
+              0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              -0.1, 0.2, -0.3, 0.4, -0.5]
+    data = pd.DataFrame({'col': values})
+    errors = pd.DataFrame({'col': [0.001] * n})
+    rolling_lengths = [5]
+
+    ave, err = rolling_hybrid_mean_df(data, errors, rolling_lengths)
+
+    # The all-zero stretch (soundings 8-12, fully inside the zero region)
+    # must produce 0.0, NOT NaN
+    for sid in range(8, 13):
+        val = ave.loc[sid, 'col']
+        assert not np.isnan(val), (
+            f"Sounding {sid} in all-zero region should be 0.0, got NaN"
+        )
+        assert val == 0.0, (
+            f"Sounding {sid} in all-zero region should be 0.0, got {val}"
+        )
+
+
+def test_symmetric_window_no_cancellation_artifact():
+    """
+    Regression test: windows where data values perfectly cancel
+    (e.g. [0.4, 0.2, 0.0, -0.2, -0.4]) must produce 0.0, not a
+    tiny floating-point ghost value like 5.55e-18.
+
+    Bug: Both IVW weighted mean and np.mean() produce tiny residuals
+    (~1e-18) for symmetric data due to floating-point arithmetic.
+    These show up as anomalous points on log-scale plots.
+
+    Fix: Cancellation detection compares |result| to mean(|data|).
+    If the ratio is < 1e-12, the result is set to 0.0.
+    """
+    n = 10
+    # Create data with several symmetric cancellation windows
+    data = pd.DataFrame({'col': [0.4, 0.2, 0.0, -0.2, -0.4,
+                                  -0.4, -0.2, 0.0, 0.2, 0.4]})
+    errors = pd.DataFrame({'col': [0.001] * n})
+    rolling_lengths = [5]
+
+    ave, err = rolling_hybrid_mean_df(data, errors, rolling_lengths)
+
+    # Soundings 2 and 7 are centers of symmetric windows — must be exactly 0.0
+    for sid in [2, 7]:
+        val = ave.loc[sid, 'col']
+        assert not np.isnan(val), f"Sounding {sid}: should be 0.0, got NaN"
+        assert val == 0.0, (
+            f"Sounding {sid}: symmetric window should give 0.0, got {val:.2e}"
+        )
+
+    # No value anywhere should be a tiny artifact
+    for i in range(n):
+        val = ave.loc[i, 'col']
+        if not np.isnan(val) and val != 0.0:
+            assert abs(val) > 1e-10, (
+                f"Sounding {i}: value {val:.2e} is a cancellation artifact"
+            )
+
+
+def test_ivw_all_zero_errors_returns_equal_weights():
+    """
+    When ALL errors are zero and no external floor is provided,
+    inverse_variance_weights must return equal weights (not inf).
+    """
+    w = inverse_variance_weights(np.array([0.0, 0.0, 0.0]))
+    assert not np.any(np.isinf(w)), "Weights must not be infinite"
+    assert not np.any(np.isnan(w)), "Weights must not be NaN"
+    assert np.allclose(w, 1.0), "All-zero errors should give equal weights"
+
+
+def test_ivw_external_floor_overrides_zero_window():
+    """
+    When all errors in a window are zero but an external gate-level
+    floor is provided, the floor must be used.
+    """
+    w = inverse_variance_weights(np.array([0.0, 0.0, 0.0]),
+                                  err_floor=0.005)
+    assert not np.any(np.isinf(w)), "Weights must not be infinite"
+    assert not np.any(np.isnan(w)), "Weights must not be NaN"
+    # All errors floored to 0.005, so all weights should be equal
+    assert np.allclose(w, w[0]), "Equal zero-errors with floor should give equal weights"
