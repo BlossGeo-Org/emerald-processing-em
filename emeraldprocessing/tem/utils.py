@@ -428,9 +428,12 @@ def _adjacent_slopes(l10_dBdt_df, l10_times_1d, original_data):
 
 def _regression_slopes(l10_dBdt_df, l10_times_1d, min_gates=5,
                        max_half_decades=0.15, min_points=3):
-    """Compute slopes using Theil-Sen regression over adaptive windows."""
-    from scipy.stats import theilslopes
+    """Compute slopes using OLS linear regression over adaptive windows.
 
+    For each gate, all soundings with fully valid windows are solved in a
+    single vectorized ``np.linalg.lstsq`` call.  Soundings with partial
+    NaN are handled individually.
+    """
     l10_dBdt_arr = l10_dBdt_df.values
     n_soundings, n_gates = l10_dBdt_arr.shape
     slope_arr = np.full((n_soundings, n_gates), np.nan)
@@ -440,20 +443,27 @@ def _regression_slopes(l10_dBdt_df, l10_times_1d, min_gates=5,
     for k in range(n_gates):
         indices = windows[k]
         t_local = l10_times_1d[indices]
-        y_all = l10_dBdt_arr[:, indices]
+        y_all = l10_dBdt_arr[:, indices]  # (n_soundings, n_window)
 
-        for i in range(n_soundings):
-            y_row = y_all[i]
-            valid = np.isfinite(y_row)
-            if valid.sum() < min_points:
-                continue
-            t_fit = t_local[valid]
-            y_fit = y_row[valid]
-            try:
-                result = theilslopes(y_fit, t_fit)
-                slope_arr[i, k] = result.slope
-            except Exception:
-                continue
+        # Design matrix for linear fit: [t, 1]
+        A = np.column_stack([t_local, np.ones(len(t_local))])
+
+        # Soundings where every gate in the window is valid
+        all_valid = np.all(np.isfinite(y_all), axis=1)
+
+        if all_valid.any():
+            Y = y_all[all_valid].T  # (n_window, n_batch)
+            coeffs, _, _, _ = np.linalg.lstsq(A, Y, rcond=None)
+            slope_arr[all_valid, k] = coeffs[0]  # slope coefficients
+
+        # Handle partial-NaN soundings individually
+        partial = ~all_valid & (np.isfinite(y_all).sum(axis=1) >= min_points)
+        for i in np.where(partial)[0]:
+            valid = np.isfinite(y_all[i])
+            A_sub = np.column_stack([t_local[valid], np.ones(valid.sum())])
+            coeffs_i, _, _, _ = np.linalg.lstsq(A_sub, y_all[i, valid],
+                                                 rcond=None)
+            slope_arr[i, k] = coeffs_i[0]
 
     return pd.DataFrame(slope_arr, index=l10_dBdt_df.index,
                         columns=l10_dBdt_df.columns)
@@ -494,11 +504,11 @@ def _adjacent_curvatures(l10_dBdt_df, l10_times_1d, original_data):
 
 def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
                            max_half_decades=0.15, min_points=5):
-    """Compute curvatures via robust quadratic fit over adaptive windows.
+    """Compute curvatures via OLS quadratic fit over adaptive windows.
 
-    The raw second derivative from polyfit (2*a) is normalized to match the
-    adjacent-gate curvature convention used by SkyTEM processing.  The
-    adjacent formula computes ``(f[k+1] - 2*f[k] + f[k-1]) / span**2``
+    The raw second derivative from the quadratic fit (2*a) is normalized to
+    match the adjacent-gate curvature convention used by SkyTEM processing.
+    The adjacent formula computes ``(f[k+1] - 2*f[k] + f[k-1]) / span**2``
     where ``span = t[k+1] - t[k-1]``.  For a quadratic with coefficient *a*
     evaluated at equally-spaced points with half-span *h = span/2*, this
     equals ``a/2``.  To make the regression output comparable, we scale
@@ -509,6 +519,10 @@ def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
     This ensures that the same curvature threshold (e.g. 10) is meaningful
     regardless of whether the data has tightly-spaced gates (HeliTEM) or
     widely-spaced gates (SkyTEM).
+
+    For each gate, all soundings with fully valid windows are solved in a
+    single vectorized ``np.linalg.lstsq`` call.  Soundings with partial
+    NaN are handled individually.
     """
     l10_dBdt_arr = l10_dBdt_df.values
     n_soundings, n_gates = l10_dBdt_arr.shape
@@ -519,21 +533,29 @@ def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
     for k in range(n_gates):
         indices = windows[k]
         t_local = l10_times_1d[indices]
-        y_all = l10_dBdt_arr[:, indices]
+        y_all = l10_dBdt_arr[:, indices]  # (n_soundings, n_window)
         window_half_span = (t_local[-1] - t_local[0]) / 2.0
 
-        for i in range(n_soundings):
-            y_row = y_all[i]
-            valid = np.isfinite(y_row)
-            if valid.sum() < min_points:
-                continue
-            t_fit = t_local[valid]
-            y_fit = y_row[valid]
-            try:
-                coeffs = _robust_polyfit(t_fit, y_fit, deg=2, n_iter=3)
-                curv_arr[i, k] = 2 * coeffs[0] * window_half_span ** 2
-            except Exception:
-                continue
+        # Design matrix for quadratic fit: [t^2, t, 1]
+        A = np.column_stack([t_local ** 2, t_local, np.ones(len(t_local))])
+
+        # Soundings where every gate in the window is valid
+        all_valid = np.all(np.isfinite(y_all), axis=1)
+
+        if all_valid.any():
+            Y = y_all[all_valid].T  # (n_window, n_batch)
+            coeffs, _, _, _ = np.linalg.lstsq(A, Y, rcond=None)
+            curv_arr[all_valid, k] = 2 * coeffs[0] * window_half_span ** 2
+
+        # Handle partial-NaN soundings individually
+        partial = ~all_valid & (np.isfinite(y_all).sum(axis=1) >= min_points)
+        for i in np.where(partial)[0]:
+            valid = np.isfinite(y_all[i])
+            t_v = t_local[valid]
+            A_sub = np.column_stack([t_v ** 2, t_v, np.ones(valid.sum())])
+            coeffs_i, _, _, _ = np.linalg.lstsq(A_sub, y_all[i, valid],
+                                                 rcond=None)
+            curv_arr[i, k] = 2 * coeffs_i[0] * window_half_span ** 2
 
     return pd.DataFrame(curv_arr, index=l10_dBdt_df.index,
                         columns=l10_dBdt_df.columns)
