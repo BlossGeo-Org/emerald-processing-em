@@ -496,7 +496,19 @@ def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
                            max_half_decades=0.15, min_points=5):
     """Compute curvatures via robust quadratic fit over adaptive windows.
 
-    Curvature = 2 * quadratic coefficient from IRLS polynomial fit.
+    The raw second derivative from polyfit (2*a) is normalized to match the
+    adjacent-gate curvature convention used by SkyTEM processing.  The
+    adjacent formula computes ``(f[k+1] - 2*f[k] + f[k-1]) / span**2``
+    where ``span = t[k+1] - t[k-1]``.  For a quadratic with coefficient *a*
+    evaluated at equally-spaced points with half-span *h = span/2*, this
+    equals ``a/2``.  To make the regression output comparable, we scale
+    the true second derivative by ``(half_span)**2``::
+
+        normalized_curvature = 2 * a * (window_span / 2) ** 2
+
+    This ensures that the same curvature threshold (e.g. 10) is meaningful
+    regardless of whether the data has tightly-spaced gates (HeliTEM) or
+    widely-spaced gates (SkyTEM).
     """
     l10_dBdt_arr = l10_dBdt_df.values
     n_soundings, n_gates = l10_dBdt_arr.shape
@@ -508,6 +520,7 @@ def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
         indices = windows[k]
         t_local = l10_times_1d[indices]
         y_all = l10_dBdt_arr[:, indices]
+        window_half_span = (t_local[-1] - t_local[0]) / 2.0
 
         for i in range(n_soundings):
             y_row = y_all[i]
@@ -518,7 +531,7 @@ def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
             y_fit = y_row[valid]
             try:
                 coeffs = _robust_polyfit(t_fit, y_fit, deg=2, n_iter=3)
-                curv_arr[i, k] = 2 * coeffs[0]
+                curv_arr[i, k] = 2 * coeffs[0] * window_half_span ** 2
             except Exception:
                 continue
 

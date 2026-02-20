@@ -222,6 +222,34 @@ def test_helitem_curvature_early_gates_finite(helitem_processing):
         f"expected at least 5")
 
 
+def test_helitem_curvature_normalized_to_skytem_range(helitem_processing, skytem_processing):
+    """Normalized HeliTEM curvatures should be in a comparable range to SkyTEM.
+
+    Without normalization, HeliTEM regression curvatures are 100-400 at early
+    gates while SkyTEM adjacent curvatures are ~1.  After normalization by
+    (window_half_span)^2, HeliTEM curvatures should be in single-digit range
+    so the same threshold works for both systems.
+    """
+    heli_curv = calculate_transient_curvatures(helitem_processing, DATA_KEY)
+    sky_curv = calculate_transient_curvatures(skytem_processing, DATA_KEY)
+
+    heli_vals = heli_curv.values.flatten()
+    heli_valid = heli_vals[np.isfinite(heli_vals)]
+    sky_vals = sky_curv.values.flatten()
+    sky_valid = sky_vals[np.isfinite(sky_vals)]
+
+    heli_abs_95 = np.percentile(np.abs(heli_valid), 95)
+    sky_abs_95 = np.percentile(np.abs(sky_valid), 95)
+
+    # Both should be within an order of magnitude of each other
+    assert heli_abs_95 < 100, (
+        f"HeliTEM 95th percentile |curvature| = {heli_abs_95:.1f}, "
+        f"expected < 100 after normalization")
+    assert heli_abs_95 / sky_abs_95 < 10, (
+        f"HeliTEM/SkyTEM 95th pct ratio = {heli_abs_95 / sky_abs_95:.1f}, "
+        f"expected < 10 for comparable thresholds")
+
+
 # --- SkyTEM Curvature Tests ---
 
 def test_skytem_curvature_not_affected(skytem_processing):
