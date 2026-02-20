@@ -368,42 +368,6 @@ def _build_adaptive_windows(l10_times, min_gates=5, max_half_decades=0.15):
     return windows
 
 
-def _robust_polyfit(x, y, deg=2, n_iter=3):
-    """Iteratively reweighted least squares polynomial fit.
-
-    Uses Huber weights to downweight outliers (like sign-change artifacts
-    in log10(|dBdt|)).
-
-    Parameters
-    ----------
-    x, y : array-like
-        Data points for the polynomial fit.
-    deg : int
-        Polynomial degree (2 for quadratic).
-    n_iter : int
-        Number of IRLS iterations.
-
-    Returns
-    -------
-    coeffs : ndarray
-        Polynomial coefficients, highest power first (np.polyfit convention).
-    """
-    weights = np.ones(len(x))
-    for _ in range(n_iter):
-        coeffs = np.polyfit(x, y, deg, w=weights)
-        residuals = y - np.polyval(coeffs, x)
-        mad = np.median(np.abs(residuals))
-        if mad < 1e-10:
-            break
-        # Huber weights: downweight points > 1.5 MAD from the fit
-        scale = mad * 1.4826  # Convert MAD to approximate std
-        threshold = 1.5 * scale
-        weights = np.where(np.abs(residuals) <= threshold,
-                           1.0,
-                           threshold / np.abs(residuals))
-    return coeffs
-
-
 def _adjacent_slopes(l10_dBdt_df, l10_times_1d, original_data):
     """Compute slopes using adjacent-gate finite difference (original method).
 
@@ -572,7 +536,7 @@ def calculate_transient_slopes(processing, data_key, method='auto'):
         Key for the gate data in layer_data.
     method : str, default 'auto'
         'adjacent'   - finite difference between adjacent gates (original method)
-        'regression' - Theil-Sen regression over adaptive windows
+        'regression' - OLS regression over adaptive windows
         'auto'       - use 'adjacent' if gate spacing is wide, 'regression' if tight
 
     Returns
@@ -608,7 +572,7 @@ def calculate_transient_curvatures(processing, data_key, method='auto'):
         Key for the gate data in layer_data.
     method : str, default 'auto'
         'adjacent'   - 3-point finite difference (original method)
-        'regression' - robust quadratic fit over adaptive windows
+        'regression' - OLS quadratic fit over adaptive windows
         'auto'       - use 'adjacent' if gate spacing is wide, 'regression' if tight
 
     Returns
