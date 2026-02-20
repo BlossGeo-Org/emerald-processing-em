@@ -250,6 +250,47 @@ def test_helitem_curvature_normalized_to_skytem_range(helitem_processing, skytem
         f"expected < 10 for comparable thresholds")
 
 
+def test_helitem_slope_gate_to_gate_smoothness(helitem_processing):
+    """Regression slopes should be smooth gate-to-gate (no wild jumps).
+
+    The mean absolute slope change between adjacent gates at late gates
+    (19+, where data quality is good) should be modest, indicating the
+    regression approach produces physically smooth results.
+    """
+    slope = calculate_transient_slopes(helitem_processing, DATA_KEY)
+    # Late gates only (good data quality)
+    late_slopes = slope.iloc[:, 19:].values
+    delta = np.abs(np.diff(late_slopes, axis=1))
+    mean_delta = np.nanmean(delta)
+    assert mean_delta < 5, (
+        f"Mean |delta-slope| between adjacent late gates = {mean_delta:.2f}, "
+        f"expected < 5 for smooth regression output")
+
+
+def test_method_adjacent_always_uses_finite_diff(helitem_processing, skytem_processing):
+    """method='adjacent' must always use the finite-difference path, even for
+    HeliTEM data that would normally trigger regression under method='auto'."""
+    for proc, label in [(helitem_processing, 'HeliTEM'),
+                        (skytem_processing, 'SkyTEM')]:
+        slope_adj = calculate_transient_slopes(proc, DATA_KEY, method='adjacent')
+        curv_adj = calculate_transient_curvatures(proc, DATA_KEY, method='adjacent')
+
+        l10_dBdt_df, l10_gate_times_df = build_l10_dBdt_time_df(proc, DATA_KEY)
+        ref_slope = l10_dBdt_df.diff(axis=1) / l10_gate_times_df.diff(axis=1)
+        original_data = proc.xyz.layer_data[DATA_KEY]
+        prev_data = original_data.shift(1, axis=1)
+        bad = (original_data * prev_data < 0) | (original_data == 0) | (prev_data == 0)
+        ref_slope[bad] = np.nan
+
+        s_new = slope_adj.values
+        s_ref = ref_slope.values
+        valid = np.isfinite(s_new) & np.isfinite(s_ref)
+        if valid.any():
+            np.testing.assert_allclose(
+                s_new[valid], s_ref[valid], rtol=1e-12,
+                err_msg=f"{label} method='adjacent' slopes differ from reference")
+
+
 # --- SkyTEM Curvature Tests ---
 
 def test_skytem_curvature_not_affected(skytem_processing):
