@@ -311,132 +311,291 @@ def build_l10_dBdt_time_df(processing, data_key):
     return l10_dBdt_df, l10_gate_times_df
 
 
-def _find_wide_window_pairs(l10_times_1d, min_span=0.01):
-    """Find wide-window gate pairs for slope/curvature computation.
+def _needs_regression(l10_times, threshold=0.02):
+    """Return True if any adjacent gate spacing in log10 is below threshold.
 
-    For each gate k, finds the nearest backward gate j where
-    log10(t[k]) - log10(t[j]) >= min_span. If no gate reaches
-    the threshold, uses the farthest valid gate (best-effort).
-    Same logic forward for curvature.
+    Used by method='auto' to decide between adjacent finite difference
+    and regression-based slope/curvature computation.
+    """
+    valid = l10_times[np.isfinite(l10_times)]
+    if len(valid) < 2:
+        return False
+    spacings = np.diff(valid)
+    return bool(np.any(spacings < threshold))
 
-    For SkyTEM (adjacent spacing >= 0.085), this always returns
-    bwd[k] = k-1 and fwd[k] = k+1, producing identical results
-    to the old adjacent-gate .diff() formula.
+
+def _build_adaptive_windows(l10_times, min_gates=5, max_half_decades=0.15):
+    """Build per-gate windows for regression: at least min_gates, up to max_half_decades.
+
+    For tightly-spaced early gates, the decade-based window captures many gates.
+    For widely-spaced late gates, we guarantee at least min_gates.
 
     Parameters
     ----------
-    l10_times_1d : array-like
-        1D array of log10(gate_times). May contain NaN.
-    min_span : float
-        Minimum log10 time span for a reliable finite difference.
+    l10_times : array-like
+        1D array of log10(gate_times).
+    min_gates : int
+        Minimum number of gates in each window.
+    max_half_decades : float
+        Maximum half-width of the window in decades of log10(t).
 
     Returns
     -------
-    bwd : ndarray of int
-        Backward partner index for each gate (-1 = no partner).
-    fwd : ndarray of int
-        Forward partner index for each gate (-1 = no partner).
+    list of ndarray
+        Per-gate arrays of indices into l10_times.
     """
-    n = len(l10_times_1d)
-    bwd = np.full(n, -1, dtype=int)
-    fwd = np.full(n, -1, dtype=int)
-
-    # Backward partners
+    n = len(l10_times)
+    windows = []
     for k in range(n):
-        if np.isnan(l10_times_1d[k]):
-            continue
-        best_j = -1
-        for j in range(k - 1, -1, -1):
-            if np.isnan(l10_times_1d[j]):
-                continue
-            best_j = j
-            span = l10_times_1d[k] - l10_times_1d[j]
-            if span >= min_span:
-                break
-        bwd[k] = best_j
+        # Start with decade-based window
+        decade_mask = np.abs(l10_times - l10_times[k]) <= max_half_decades
+        indices = np.where(decade_mask)[0]
 
-    # Forward partners
-    for k in range(n):
-        if np.isnan(l10_times_1d[k]):
-            continue
-        best_m = -1
-        for m in range(k + 1, n):
-            if np.isnan(l10_times_1d[m]):
-                continue
-            best_m = m
-            span = l10_times_1d[m] - l10_times_1d[k]
-            if span >= min_span:
-                break
-        fwd[k] = best_m
+        # Ensure at least min_gates (expand symmetrically from k)
+        if len(indices) < min_gates:
+            left = k
+            right = k
+            while (right - left + 1) < min_gates:
+                if left > 0:
+                    left -= 1
+                if (right - left + 1) >= min_gates:
+                    break
+                if right < n - 1:
+                    right += 1
+            indices = np.arange(left, right + 1)
 
-    return bwd, fwd
+        windows.append(indices)
+    return windows
 
 
-def calculate_transient_slopes(processing, data_key):
-    l10_dBdt_df, l10_gate_times_df = build_l10_dBdt_time_df(processing, data_key)
-    l10_times_1d = l10_gate_times_df.iloc[0].values
+def _robust_polyfit(x, y, deg=2, n_iter=3):
+    """Iteratively reweighted least squares polynomial fit.
 
-    bwd, _ = _find_wide_window_pairs(l10_times_1d)
+    Uses Huber weights to downweight outliers (like sign-change artifacts
+    in log10(|dBdt|)).
 
-    slope = pd.DataFrame(np.nan, index=l10_dBdt_df.index, columns=l10_dBdt_df.columns)
-    for k in range(len(l10_times_1d)):
-        j = bwd[k]
-        if j == -1:
-            continue
-        slope.iloc[:, k] = (
-            (l10_dBdt_df.iloc[:, k] - l10_dBdt_df.iloc[:, j])
-            / (l10_times_1d[k] - l10_times_1d[j])
-        )
+    Parameters
+    ----------
+    x, y : array-like
+        Data points for the polynomial fit.
+    deg : int
+        Polynomial degree (2 for quadratic).
+    n_iter : int
+        Number of IRLS iterations.
 
-    # Sign change guard: mask where endpoint gates differ in sign or are zero.
-    # After abs() + log10(), sign changes create artificial V-shaped dips
-    # that produce meaningless extreme slopes.
-    original_data = processing.xyz.layer_data[data_key]
-    for k in range(len(l10_times_1d)):
-        j = bwd[k]
-        if j == -1:
-            continue
-        bad = (
-            (original_data.iloc[:, k] * original_data.iloc[:, j] < 0)
-            | (original_data.iloc[:, k] == 0)
-            | (original_data.iloc[:, j] == 0)
-        )
-        slope.loc[bad, slope.columns[k]] = np.nan
+    Returns
+    -------
+    coeffs : ndarray
+        Polynomial coefficients, highest power first (np.polyfit convention).
+    """
+    weights = np.ones(len(x))
+    for _ in range(n_iter):
+        coeffs = np.polyfit(x, y, deg, w=weights)
+        residuals = y - np.polyval(coeffs, x)
+        mad = np.median(np.abs(residuals))
+        if mad < 1e-10:
+            break
+        # Huber weights: downweight points > 1.5 MAD from the fit
+        scale = mad * 1.4826  # Convert MAD to approximate std
+        threshold = 1.5 * scale
+        weights = np.where(np.abs(residuals) <= threshold,
+                           1.0,
+                           threshold / np.abs(residuals))
+    return coeffs
+
+
+def _adjacent_slopes(l10_dBdt_df, l10_times_1d, original_data):
+    """Compute slopes using adjacent-gate finite difference (original method).
+
+    Equivalent to the old .diff() formula with sign-change guard.
+    """
+    slope = l10_dBdt_df.diff(axis=1) / pd.DataFrame(
+        np.tile(np.diff(l10_times_1d, prepend=np.nan), (len(l10_dBdt_df), 1)),
+        index=l10_dBdt_df.index, columns=l10_dBdt_df.columns
+    )
+
+    # Sign change guard
+    prev_data = original_data.shift(1, axis=1)
+    bad = (
+        (original_data * prev_data < 0)
+        | (original_data == 0)
+        | (prev_data == 0)
+    )
+    slope[bad] = np.nan
 
     return slope
 
 
-def calculate_transient_curvatures(processing, data_key):
-    l10_dBdt_df, l10_gate_times_df = build_l10_dBdt_time_df(processing, data_key)
-    l10_times_1d = l10_gate_times_df.iloc[0].values
+def _regression_slopes(l10_dBdt_df, l10_times_1d, min_gates=5,
+                       max_half_decades=0.15, min_points=3):
+    """Compute slopes using Theil-Sen regression over adaptive windows."""
+    from scipy.stats import theilslopes
 
-    bwd, fwd = _find_wide_window_pairs(l10_times_1d)
+    l10_dBdt_arr = l10_dBdt_df.values
+    n_soundings, n_gates = l10_dBdt_arr.shape
+    slope_arr = np.full((n_soundings, n_gates), np.nan)
 
-    curvature = pd.DataFrame(np.nan, index=l10_dBdt_df.index, columns=l10_dBdt_df.columns)
-    for k in range(len(l10_times_1d)):
-        j, m = bwd[k], fwd[k]
-        if j == -1 or m == -1:
+    windows = _build_adaptive_windows(l10_times_1d, min_gates, max_half_decades)
+
+    for k in range(n_gates):
+        indices = windows[k]
+        t_local = l10_times_1d[indices]
+        y_all = l10_dBdt_arr[:, indices]
+
+        for i in range(n_soundings):
+            y_row = y_all[i]
+            valid = np.isfinite(y_row)
+            if valid.sum() < min_points:
+                continue
+            t_fit = t_local[valid]
+            y_fit = y_row[valid]
+            try:
+                result = theilslopes(y_fit, t_fit)
+                slope_arr[i, k] = result.slope
+            except Exception:
+                continue
+
+    return pd.DataFrame(slope_arr, index=l10_dBdt_df.index,
+                        columns=l10_dBdt_df.columns)
+
+
+def _adjacent_curvatures(l10_dBdt_df, l10_times_1d, original_data):
+    """Compute curvatures using adjacent-gate finite difference (original method).
+
+    Uses the 3-point formula: (f[k+1] - 2*f[k] + f[k-1]) / (t[k+1] - t[k-1])^2
+    with sign-change guard masking gates where any of the 3 endpoints is <= 0.
+    """
+    n_gates = len(l10_times_1d)
+    curvature = pd.DataFrame(np.nan, index=l10_dBdt_df.index,
+                             columns=l10_dBdt_df.columns)
+
+    for k in range(1, n_gates - 1):
+        if np.isnan(l10_times_1d[k - 1]) or np.isnan(l10_times_1d[k + 1]):
             continue
-        t_span = l10_times_1d[m] - l10_times_1d[j]
+        t_span = l10_times_1d[k + 1] - l10_times_1d[k - 1]
         curvature.iloc[:, k] = (
-            l10_dBdt_df.iloc[:, m] - 2 * l10_dBdt_df.iloc[:, k] + l10_dBdt_df.iloc[:, j]
+            l10_dBdt_df.iloc[:, k + 1] - 2 * l10_dBdt_df.iloc[:, k]
+            + l10_dBdt_df.iloc[:, k - 1]
         ) / (t_span ** 2)
 
-    # Sign change guard: mask if any of the 3 endpoint gates has value <= 0.
-    # Curvature uses abs() + log10(), so non-positive values are meaningless.
-    original_data = processing.xyz.layer_data[data_key]
-    for k in range(len(l10_times_1d)):
-        j, m = bwd[k], fwd[k]
-        if j == -1 or m == -1:
+    # Sign change guard
+    for k in range(1, n_gates - 1):
+        if np.isnan(l10_times_1d[k - 1]) or np.isnan(l10_times_1d[k + 1]):
             continue
         bad = (
-            (original_data.iloc[:, j] <= 0)
+            (original_data.iloc[:, k - 1] <= 0)
             | (original_data.iloc[:, k] <= 0)
-            | (original_data.iloc[:, m] <= 0)
+            | (original_data.iloc[:, k + 1] <= 0)
         )
         curvature.loc[bad, curvature.columns[k]] = np.nan
 
     return curvature
+
+
+def _regression_curvatures(l10_dBdt_df, l10_times_1d, min_gates=7,
+                           max_half_decades=0.15, min_points=5):
+    """Compute curvatures via robust quadratic fit over adaptive windows.
+
+    Curvature = 2 * quadratic coefficient from IRLS polynomial fit.
+    """
+    l10_dBdt_arr = l10_dBdt_df.values
+    n_soundings, n_gates = l10_dBdt_arr.shape
+    curv_arr = np.full((n_soundings, n_gates), np.nan)
+
+    windows = _build_adaptive_windows(l10_times_1d, min_gates, max_half_decades)
+
+    for k in range(n_gates):
+        indices = windows[k]
+        t_local = l10_times_1d[indices]
+        y_all = l10_dBdt_arr[:, indices]
+
+        for i in range(n_soundings):
+            y_row = y_all[i]
+            valid = np.isfinite(y_row)
+            if valid.sum() < min_points:
+                continue
+            t_fit = t_local[valid]
+            y_fit = y_row[valid]
+            try:
+                coeffs = _robust_polyfit(t_fit, y_fit, deg=2, n_iter=3)
+                curv_arr[i, k] = 2 * coeffs[0]
+            except Exception:
+                continue
+
+    return pd.DataFrame(curv_arr, index=l10_dBdt_df.index,
+                        columns=l10_dBdt_df.columns)
+
+
+def calculate_transient_slopes(processing, data_key, method='auto'):
+    """Compute transient decay slopes in log10(|dBdt|) vs log10(t) space.
+
+    Parameters
+    ----------
+    processing : object
+        Processing object with xyz data and GateTimes.
+    data_key : str
+        Key for the gate data in layer_data.
+    method : str, default 'auto'
+        'adjacent'   - finite difference between adjacent gates (original method)
+        'regression' - Theil-Sen regression over adaptive windows
+        'auto'       - use 'adjacent' if gate spacing is wide, 'regression' if tight
+
+    Returns
+    -------
+    pd.DataFrame
+        Slope values with same index/columns as the input data.
+    """
+    l10_dBdt_df, l10_gate_times_df = build_l10_dBdt_time_df(processing, data_key)
+    l10_times_1d = l10_gate_times_df.iloc[0].values
+    original_data = processing.xyz.layer_data[data_key]
+
+    if method == 'auto':
+        use_regression = _needs_regression(l10_times_1d)
+    elif method == 'regression':
+        use_regression = True
+    else:
+        use_regression = False
+
+    if use_regression:
+        return _regression_slopes(l10_dBdt_df, l10_times_1d)
+    else:
+        return _adjacent_slopes(l10_dBdt_df, l10_times_1d, original_data)
+
+
+def calculate_transient_curvatures(processing, data_key, method='auto'):
+    """Compute transient decay curvatures in log10(|dBdt|) vs log10(t) space.
+
+    Parameters
+    ----------
+    processing : object
+        Processing object with xyz data and GateTimes.
+    data_key : str
+        Key for the gate data in layer_data.
+    method : str, default 'auto'
+        'adjacent'   - 3-point finite difference (original method)
+        'regression' - robust quadratic fit over adaptive windows
+        'auto'       - use 'adjacent' if gate spacing is wide, 'regression' if tight
+
+    Returns
+    -------
+    pd.DataFrame
+        Curvature values with same index/columns as the input data.
+    """
+    l10_dBdt_df, l10_gate_times_df = build_l10_dBdt_time_df(processing, data_key)
+    l10_times_1d = l10_gate_times_df.iloc[0].values
+    original_data = processing.xyz.layer_data[data_key]
+
+    if method == 'auto':
+        use_regression = _needs_regression(l10_times_1d)
+    elif method == 'regression':
+        use_regression = True
+    else:
+        use_regression = False
+
+    if use_regression:
+        return _regression_curvatures(l10_dBdt_df, l10_times_1d)
+    else:
+        return _adjacent_curvatures(l10_dBdt_df, l10_times_1d, original_data)
 
 
 def sampleDEM_reproject_DEM(DEMfilename,
