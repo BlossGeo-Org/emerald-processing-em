@@ -33,6 +33,7 @@ setuptools.setup(
         'emeraldprocessing.pipeline_step': [
             'Save intermediate results=emeraldprocessing.pipeline:save_intermediate',
             'Use manual edits=emeraldprocessing.diff:apply_diff',
+            'Apply manual edits at position=emeraldprocessing.diff:apply_diff',
             # Corrections:
             'Classify high altitude flightlines: Auto=emeraldprocessing.tem.corrections:auto_classify_high_altitude_flightlines',
             'Classify flightlines: Selection=emeraldprocessing.tem.corrections:classify_flightlines',
