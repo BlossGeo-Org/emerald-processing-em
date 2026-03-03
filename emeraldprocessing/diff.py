@@ -32,7 +32,8 @@ def apply_diff(processing : pipeline.ProcessingData,
     elif diff.endswith(".msgpack"):
         diffxyz = libaarhusxyz.export.msgpack.load(diff)
         
-    diffxyz.normalize_naming(naming_standard="alc")
+    if hasattr(diffxyz, 'model_dict') and 'model_info' in diffxyz.model_dict:
+        diffxyz.normalize_naming(naming_standard="alc")
 
     processing.xyz = processing.xyz.apply_diff(diffxyz)
 
