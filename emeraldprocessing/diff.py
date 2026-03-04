@@ -32,10 +32,12 @@ def apply_diff(processing : pipeline.ProcessingData,
     elif diff.endswith(".msgpack"):
         diffxyz = libaarhusxyz.export.msgpack.load(diff)
         
-    if (hasattr(diffxyz, 'model_dict')
-            and 'model_info' in diffxyz.model_dict
-            and 'layer_data' in diffxyz.model_dict):
-        diffxyz.normalize_naming(naming_standard="alc")
+    # Only normalize full XYZ files (.xyz/.xyzd), never diffs from msgpack.
+    # Diffs have sparse model_dicts with raw values (not DataFrames) that
+    # crash normalize_naming, and their column names already match the source.
+    if diff.endswith(".xyz") or diff.endswith(".xyzd"):
+        if hasattr(diffxyz, 'model_dict') and 'model_info' in diffxyz.model_dict:
+            diffxyz.normalize_naming(naming_standard="alc")
 
     processing.xyz = processing.xyz.apply_diff(diffxyz)
 
