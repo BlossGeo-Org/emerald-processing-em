@@ -531,8 +531,9 @@ def classify_flightlines(processing: pipeline.ProcessingData,
         flightlines['flight_type'] = 'Production'
 
     filt = pd.Series(np.zeros(len(flightlines)), dtype=bool)
+    line_col = flightlines.Line.astype(str)
     for line in lines:
-        filt = filt | (flightlines.Line == line)
+        filt = filt | (line_col == str(line))
     flightlines.loc[filt, 'flight_type'] = flight_type
 
     if True:
