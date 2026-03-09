@@ -146,13 +146,14 @@ def select_lines(processing: pipeline.ProcessingData,
     print('  - Reducing the dataset to the selected line numbers')
 
     filt = pd.Series(np.zeros(len(processing.xyz.flightlines)), dtype=bool)
+    line_col = processing.xyz.flightlines.Line.astype(str)
     for line in lines:
-        filt = filt | (processing.xyz.flightlines.Line == line)
+        filt = filt | (line_col == str(line))
 
     for key in processing.xyz.layer_data.keys():
         if key.startswith('InUse_'):
             processing.xyz.layer_data[key].loc[~filt, :] = 0
-            
+
     # utils.drop_filt_XYZ(processing.xyz, ~filt)
     end = time.time()
     print(f"  - Time used reducing the dataset {end - start} sec.")
