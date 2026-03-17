@@ -47,5 +47,14 @@ def apply_diff(processing : pipeline.ProcessingData,
         if hasattr(diffxyz, 'model_dict') and 'model_info' in diffxyz.model_dict:
             diffxyz.normalize_naming(naming_standard="alc")
 
+    # Ensure diff_dummy is set — frontend manual edit diffs always use -1 as
+    # the sentinel for "no change". If model_info is missing or incomplete
+    # (e.g. from a load→re-save cycle), default it so apply_diff skips sentinels.
+    # Note: model_info is a property, so set via model_dict directly.
+    if not diffxyz.model_info.get("diff_dummy"):
+        mi = diffxyz.model_dict.get("model_info", {})
+        mi["diff_dummy"] = -1
+        diffxyz.model_dict["model_info"] = mi
+
     processing.xyz = processing.xyz.apply_diff(diffxyz)
 
