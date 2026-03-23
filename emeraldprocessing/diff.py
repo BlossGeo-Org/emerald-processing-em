@@ -1,8 +1,12 @@
 from . import pipeline
+import logging
 import typing
 import libaarhusxyz
 import libaarhusxyz.export.msgpack
+import numpy as np
 import pydantic
+
+logger = logging.getLogger(__name__)
 
 ManualEditUrl = typing.Annotated[
     typing.Any,
@@ -56,5 +60,49 @@ def apply_diff(processing : pipeline.ProcessingData,
         mi["diff_dummy"] = -1
         diffxyz.model_dict["model_info"] = mi
 
+    _remap_apply_idx_by_fid(processing.xyz, diffxyz)
     processing.xyz = processing.xyz.apply_diff(diffxyz)
+
+
+def _remap_apply_idx_by_fid(target_xyz, diffxyz):
+    """Remap apply_idx using fid values so diffs survive sort-order changes.
+
+    When a dataset is reimported and libaarhusxyz.normalize() produces a
+    different global sort order (e.g. NaN dates becoming valid dates),
+    positional apply_idx values point to wrong soundings.  If the diff
+    includes a ``fid`` column (added by the frontend since Sprint 08),
+    this function resolves each fid to its current position in the target
+    dataset and overwrites apply_idx accordingly.
+
+    No-op for old diffs that lack fid (backwards compatible).  Falls back
+    to the original apply_idx if any fid cannot be found in the target.
+    """
+    if "fid" not in diffxyz.flightlines.columns:
+        return
+
+    diff_fids = diffxyz.flightlines["fid"].values
+    target_fids = target_xyz.flightlines["fid"]
+
+    # Build fid → positional-index lookup from the current dataset
+    fid_to_pos = {}
+    for pos, fid_val in enumerate(target_fids):
+        if fid_val not in fid_to_pos:
+            fid_to_pos[fid_val] = pos
+
+    # Remap each diff fid to its current position in the target
+    remapped = []
+    for fid_val in diff_fids:
+        pos = fid_to_pos.get(fid_val)
+        if pos is None:
+            logger.warning(
+                "fid %s from diff not found in target dataset; "
+                "falling back to positional apply_idx",
+                fid_val,
+            )
+            return  # Abort remapping — use original apply_idx as-is
+        remapped.append(pos)
+
+    diffxyz.flightlines["apply_idx"] = np.array(remapped, dtype=np.int64)
+    # Remove fid so df_apply() doesn't overwrite target fid values
+    diffxyz.flightlines.drop("fid", axis=1, inplace=True)
 
