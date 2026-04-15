@@ -356,6 +356,18 @@ def correct_data_tilt_for1D(processing: pipeline.ProcessingData,
     roll_key = "TxRoll"
     pitch_key = "TxPitch"
 
+    # Guard: if tilt columns are missing, skip rather than KeyError.
+    # Add an 'Assume horizontal transmitter' step before this one if you
+    # want to proceed with a zero-tilt assumption.
+    missing = [k for k in (roll_key, pitch_key) if k not in data.flightlines.columns]
+    if missing:
+        print(f"  - WARNING: {missing} not found in flightlines.")
+        print(f"    - No tilt correction applied. Add 'Assume horizontal transmitter'")
+        print(f"      before this step to proceed with a zero-tilt assumption.")
+        end = time.time()
+        print(f"  - Time used for 1D correction of the data: {end - start} sec.\n")
+        return
+
     if (f'{roll_key}_orig' in data.flightlines) or (f'{pitch_key}_orig' in data.flightlines):
         print(f"  - Tilt correction has already been applied. '{roll_key}_orig' and/or '{pitch_key}_orig' in data")
         print(f"    - No tilt corrections will be performed.")
@@ -740,3 +752,66 @@ def auto_classify_high_altitude_flightlines(processing: pipeline.ProcessingData,
 
     end = time.time()
     print(f"  - Time used to auto-classify the dataset: {end - start} sec.\n")
+
+
+def fill_current_from_gex(processing: pipeline.ProcessingData):
+    """
+    Fill Current_Ch## columns in flightlines from GEX TxApproximateCurrent.
+
+    Use this step when measured transmitter current is absent, noisy, or
+    suspect. If Current_Ch## is already present it will be overwritten with
+    the single nominal value from the GEX.
+
+    Note: the processing step runner automatically fills missing Current_Ch##
+    columns from the GEX before constructing ProcessingData, so this step is
+    only needed when you want to explicitly override measured current values.
+    """
+    start = time.time()
+    print('  - Filling transmitter current from GEX TxApproximateCurrent')
+    gex = processing.gex
+    data = processing.xyz
+
+    for ch in range(1, gex.number_channels + 1):
+        ch_key = f"Channel{ch}"
+        suffix = f"Ch{ch:02d}"
+        current_col = f"Current_{suffix}"
+        approx_current = gex.gex_dict[ch_key]["TxApproximateCurrent"]
+        action = "overwriting" if current_col in data.flightlines.columns else "adding"
+        print(f"  - {action} {current_col} = {approx_current} A (from GEX)")
+        data.flightlines[current_col] = approx_current
+
+    end = time.time()
+    print(f"  - Time used filling current from GEX: {end - start} sec.\n")
+
+
+def assume_horizontal_transmitter(processing: pipeline.ProcessingData):
+    """
+    Set TxRoll and TxPitch to zero, assuming a perfectly horizontal transmitter.
+
+    Saves the original values as TxRoll_orig and TxPitch_orig. Use this step
+    before 'Correct data and tilt for 1D' when measured tilt is unreliable or
+    not recorded. The idempotency check in correct_data_tilt_for1D (which looks
+    for _orig columns) will prevent the correction being applied twice.
+
+    If TxRoll or TxPitch are not present in the data they are created as zero.
+    """
+    start = time.time()
+    print('  - Assuming horizontal transmitter (TxRoll = TxPitch = 0)')
+    data = processing.xyz
+
+    roll_key = "TxRoll"
+    pitch_key = "TxPitch"
+
+    for key in (roll_key, pitch_key):
+        if key not in data.flightlines.columns:
+            print(f"  - {key} not found in flightlines, creating as 0.0")
+            data.flightlines[key] = 0.0
+
+    data.flightlines[f'{roll_key}_orig'] = data.flightlines[roll_key]
+    data.flightlines[f'{pitch_key}_orig'] = data.flightlines[pitch_key]
+    data.flightlines[roll_key] = 0.0
+    data.flightlines[pitch_key] = 0.0
+
+    print(f"  - TxRoll and TxPitch set to 0.0 (originals saved as _orig columns)")
+    end = time.time()
+    print(f"  - Time used assuming horizontal transmitter: {end - start} sec.\n")

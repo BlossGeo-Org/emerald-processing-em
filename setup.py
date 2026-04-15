@@ -40,6 +40,8 @@ setuptools.setup(
             'Select flight-types=emeraldprocessing.tem.corrections:select_flight_types',
             'Correct altitude and topo=emeraldprocessing.tem.corrections:correct_altitude_and_topo',
             'Correct data and tilt for 1D=emeraldprocessing.tem.corrections:correct_data_tilt_for1D',
+            'Assume horizontal transmitter=emeraldprocessing.tem.corrections:assume_horizontal_transmitter',
+            'Fill current from GEX=emeraldprocessing.tem.corrections:fill_current_from_gex',
             'Moving average filter=emeraldprocessing.tem.corrections:moving_average_filter',
             'STD error: Add fractional error=emeraldprocessing.tem.corrections:add_std_error',
             'STD error: Replace from GEX=emeraldprocessing.tem.corrections:add_replace_gex_std_error',
