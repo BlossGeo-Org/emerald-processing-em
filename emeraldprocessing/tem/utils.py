@@ -744,7 +744,7 @@ def interpolate_rolling_size_for_all_gates(filterlist, moment):
     ni = f(ci)
     return [round_to_odd(n) for n in ni]
 
-def get_min_periods(filter_length, min_fraction=0.35):
+def get_min_periods(filter_length, min_valid_fraction=0.35):
     """
     Calculate minimum periods as a fraction of filter length.
 
@@ -752,9 +752,10 @@ def get_min_periods(filter_length, min_fraction=0.35):
     ----------
     filter_length : int
         The rolling window size
-    min_fraction : float, default 0.35
-        Minimum fraction of window that must have valid data.
-        Default 0.35 (35%) aligns with Workbench typical settings of 30-45%.
+    min_valid_fraction : float, default 0.35
+        Minimum fraction of window that must have valid (non-NaN) data before
+        the filter produces an output. See moving_average_filter for guidance
+        on choosing this value.
 
     Returns
     -------
@@ -762,7 +763,7 @@ def get_min_periods(filter_length, min_fraction=0.35):
         Minimum number of valid samples required
     """
     if filter_length > 1:
-        return max(2, int(np.ceil(filter_length * min_fraction)))
+        return max(2, int(np.ceil(filter_length * min_valid_fraction)))
     else:
         return 1
 
@@ -855,7 +856,7 @@ def inverse_variance_weights(errors, max_weight_factor=10.0, err_floor=None):
 
 
 def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
-                           alpha=0.1, min_fraction=0.35, max_weight_factor=10.0):
+                           alpha=0.1, min_valid_fraction=0.35, max_weight_factor=10.0):
     """
     Rolling average with hybrid alpha-trim + inverse variance weighting.
 
@@ -875,7 +876,7 @@ def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
         Window size for each column (gate)
     alpha : float, default 0.1
         Fraction to trim from each end (0.1 = 10%)
-    min_fraction : float, default 0.35
+    min_valid_fraction : float, default 0.35
         Minimum fraction of window needed for valid output
     max_weight_factor : float, default 10.0
         Cap for inverse variance weights
@@ -911,7 +912,7 @@ def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
     std_err_ab = df_err_ab * np.nan
 
     for filter_length, col in zip(rolling_lengths, df_dat.columns):
-        min_periods = get_min_periods(filter_length, min_fraction)
+        min_periods = get_min_periods(filter_length, min_valid_fraction)
 
         for sid in range(len(df_dat[col])):
             # Define window bounds
@@ -1055,7 +1056,7 @@ def deprecated_rolling_weighted_mean_df(df_dat, df_err_fp, rolling_lengths, weig
         raise Exception('number of rolling filter lengths differs from number of columns in dataframe ')
 
 
-def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
+def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths, min_valid_fraction=0.35):
     if len(rolling_lengths) == len(df_dat.columns):
         index_shift = min(df_dat.index)
 
@@ -1068,7 +1069,7 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
 
         for filter_length, col in zip(rolling_lengths, df_dat.columns):
             # Calculate the average of the data
-            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).mean()
+            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length, min_valid_fraction)).mean()
 
             # Calculate the SST error
             for sid in range(0, len(df_dat[col])):
@@ -1085,7 +1086,7 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
                 valid_mask = window_data.notna() & window_std.notna()
                 num_sample = valid_mask.sum()
 
-                if num_sample >= get_min_periods(filter_length):
+                if num_sample >= get_min_periods(filter_length, min_valid_fraction):
                     sample_data = window_data[valid_mask].values
                     sample_std = window_std[valid_mask].values
                     sample_weight = np.ones(num_sample)
@@ -1108,7 +1109,8 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths):
         raise Exception('number of rolling filter lengths differs from number of columns in dataframe ')
 
 
-def rolling_mean_df(df_dat, rolling_lengths, error_calc_scheme='Unweighted_SEM'):
+def rolling_mean_df(df_dat, rolling_lengths, error_calc_scheme='Unweighted_SEM',
+                    min_valid_fraction=0.35):
     if len(rolling_lengths) == len(df_dat.columns):
         # Prepare empty data frames
         ave_dat = df_dat * np.nan
@@ -1116,15 +1118,16 @@ def rolling_mean_df(df_dat, rolling_lengths, error_calc_scheme='Unweighted_SEM')
         unweighted_SEM_df = df_dat * np.nan
 
         for filter_length, col in zip(rolling_lengths, df_dat.columns):
+            min_periods = get_min_periods(filter_length, min_valid_fraction)
             # Calculate the rolling STD error
-            std_err_df[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).std()
+            std_err_df[col] = df_dat[col].rolling(filter_length, center=True, min_periods=min_periods).std()
 
             # Calculate the unweighted Standard Error of the Mean
-            rolling_std = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).std()
-            actual_count = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).count()
+            rolling_std = df_dat[col].rolling(filter_length, center=True, min_periods=min_periods).std()
+            actual_count = df_dat[col].rolling(filter_length, center=True, min_periods=min_periods).count()
             unweighted_SEM_df[col] = rolling_std / np.sqrt(actual_count)
 
-            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length)).mean()
+            ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=min_periods).mean()
 
         unweighted_SEM_frac_err = np.abs(unweighted_SEM_df / ave_dat)
         std_frac_err = np.abs(std_err_df / ave_dat)

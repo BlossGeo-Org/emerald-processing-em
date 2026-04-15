@@ -164,6 +164,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
                                                                   'Gate_Ch02': {'width_at_first_gate': 5,
                                                                                  'width_at_last_gate': 9}},
                           averaging_method: str = 'hybrid',
+                          min_valid_fraction: float = 0.35,
                           verbose: bool = False):
     """
     Moving average filter, averaging Gate values from neighboring soundings.
@@ -186,6 +187,18 @@ def moving_average_filter(processing: pipeline.ProcessingData,
           robust handling of outliers and proper NaN handling near culled data regions.
         - 'SST': Uses original Sum-of-Squares-of-Total method (rolling_SST_mean_df).
         - 'simple': Uses simple rolling mean without weighting (rolling_mean_df).
+
+    min_valid_fraction :
+        Minimum fraction of the rolling window that must contain valid (non-NaN, non-culled)
+        soundings before the filter produces an output at that position. Lower values allow
+        the filter to produce estimates closer to line edges and culled data regions; higher
+        values restrict output to positions with denser data coverage.
+        - 0.5: Strict — requires half the window to be valid. Equivalent to the pre-2026
+          behavior. Produces NaN near line edges and culled regions.
+        - 0.35: Default — aligns with Aarhus Workbench typical settings (30-45%). More
+          permissive at edges.
+        - 0.2: Permissive — fills aggressively near edges; use with caution near heavily
+          culled regions.
 
     verbose :
         If True, more output about what the filter is doing
@@ -219,6 +232,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
         movingAverageFilterLine(lines[line],
                                 filter_list_dict,
                                 averaging_method=averaging_method,
+                                min_valid_fraction=min_valid_fraction,
                                 verbose=verbose)
     processing.xyz = utils.merge_lines(lines)
     end = time.time()
@@ -228,6 +242,7 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 def movingAverageFilterLine(lineData,
                             filter_dict,
                             averaging_method='hybrid',
+                            min_valid_fraction=0.35,
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
 
@@ -274,15 +289,18 @@ def movingAverageFilterLine(lineData,
             if averaging_method == 'hybrid':
                 average_data, average_std = utils.rolling_hybrid_mean_df(dBdt_df,
                                                                           std_df,
-                                                                          rolling_lengths)
+                                                                          rolling_lengths,
+                                                                          min_valid_fraction=min_valid_fraction)
             elif averaging_method == 'SST':
                 average_data, average_std = utils.rolling_SST_mean_df(dBdt_df,
                                                                       std_df,
-                                                                      rolling_lengths)
+                                                                      rolling_lengths,
+                                                                      min_valid_fraction=min_valid_fraction)
             elif averaging_method == 'simple':
                 average_data, average_std = utils.rolling_mean_df(dBdt_df,
                                                                   rolling_lengths,
-                                                                  error_calc_scheme='STD')
+                                                                  error_calc_scheme='STD',
+                                                                  min_valid_fraction=min_valid_fraction)
             else:
                 raise ValueError(f"Unknown averaging_method '{averaging_method}'. "
                                f"Choose from: 'hybrid', 'SST', 'simple'")
@@ -329,7 +347,8 @@ def movingAverageFilterLine(lineData,
 
                 average_data, average_std = utils.rolling_mean_df(dBdt_df,
                                                                   rolling_lengths,
-                                                                  error_calc_scheme = 'STD')
+                                                                  error_calc_scheme='STD',
+                                                                  min_valid_fraction=min_valid_fraction)
 
                 lineData.layer_data[dat_key].loc[filt, :] = average_data
                 lineData.layer_data[std_key].loc[filt, :] = average_std
