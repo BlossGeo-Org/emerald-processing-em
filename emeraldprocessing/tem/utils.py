@@ -1194,7 +1194,8 @@ def make_noise_df(processing,
     data_key = f"{dat_key_prefix}{str_channel}"
     assert data_key in data.layer_data.keys(), "The channel requested does not exist"
 
-    noise = ((processing.GateTimes[data_key] / 1e-3) ** noise_exponent) * noise_level_1ms
+    gate_times = np.array(processing.GateTimes[data_key], dtype=float)
+    noise = (np.clip(gate_times, 0, None) / 1e-3) ** noise_exponent * noise_level_1ms
 
     noise_array = np.tile(noise, (num_soundings, 1))
     noise_df = pd.DataFrame(noise_array,
@@ -1202,7 +1203,7 @@ def make_noise_df(processing,
                             columns=data.layer_data[data_key].columns,
                             index=data.layer_data[data_key].index)
 
-    noise_df = noise_df / data.model_info['scalefactor']
+    noise_df = noise_df / data.model_info.get('scalefactor', 1.0)
     if norm_by_tx:
         noise_df = noise_df / processing.ApproxDipoleMoment[data_key]
 
