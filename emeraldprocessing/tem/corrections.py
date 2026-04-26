@@ -457,7 +457,13 @@ def add_replace_gex_std_error(processing: pipeline.ProcessingData,
     channel :
         Which channel to set the STD for.
     noise_level_1ms :
-        Absolute noise floor amplitude at t=1ms, in normalised units V/(A*m^4).
+        Absolute noise floor amplitude at t=1ms, in V/m² (dB/dt normalised by
+        receiver area only, NOT by transmitter moment).  make_noise_df divides
+        this by the transmitter dipole moment internally, so the stored STD ends
+        up in the same V/(A*m^4) units as the data.
+        Empirical values for SkyTEM 304 (quiet rural survey):
+          LM (Ch1): ~5e-10 V/m²  (~1.7e-13 V/(A*m^4))
+          HM (Ch2): ~1.5e-9 V/m² (~9.6e-15 V/(A*m^4))
         If None, the GEX UniformDataSTD value is used (no-noise_level_1ms cases).
     noise_exponent :
         Power-law exponent for the time-dependent noise floor (default -0.5).
