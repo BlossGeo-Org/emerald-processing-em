@@ -45,6 +45,7 @@ setuptools.setup(
             'Moving average filter=emeraldprocessing.tem.corrections:moving_average_filter',
             'STD error: Add fractional error=emeraldprocessing.tem.corrections:add_std_error',
             'STD error: Replace from GEX=emeraldprocessing.tem.corrections:add_replace_gex_std_error',
+            'STD error: Add from noise model=emeraldprocessing.tem.corrections:add_std_error_from_noise_model',
             'Add noise realization=emeraldprocessing.tem.corrections:add_noise_realization',
             'Copy Column=emeraldprocessing.tem.corrections:copy_column',
             'Copy Data=emeraldprocessing.tem.corrections:copy_data',
