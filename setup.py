@@ -5,7 +5,7 @@ import setuptools
 
 setuptools.setup(
     name='emeraldprocessing',
-    version='0.1.10',
+    version='0.1.11',
     description="""Processing tools for multi-sounding EM geophysical data""",
     long_description="""Processing tools and and workflow for multi-sounding EM geophysical data.""",
     long_description_content_type="text/markdown",
@@ -31,8 +31,7 @@ setuptools.setup(
     ],
     entry_points = {
         'emeraldprocessing.pipeline_step': [
-            'Save intermediate results=emeraldprocessing.pipeline:save_intermediate',
-            'Use manual edits=emeraldprocessing.diff:apply_diff',
+            'Save intermediate results and apply manual edits=emeraldprocessing.diff:save_intermediate_and_apply_diff',
             # Corrections:
             'Classify high altitude flightlines: Auto=emeraldprocessing.tem.corrections:auto_classify_high_altitude_flightlines',
             'Classify flightlines: Selection=emeraldprocessing.tem.corrections:classify_flightlines',
