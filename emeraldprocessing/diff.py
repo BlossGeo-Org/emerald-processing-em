@@ -1,27 +1,17 @@
 from . import pipeline
 import typing
 import copy
+import pydantic
 import libaarhusxyz
 import libaarhusxyz.export.msgpack
-import pydantic
 import slugify
 
 ManualEditUrl = typing.Annotated[
-    typing.Any,
+    pydantic.AnyUrl,
     {"json_schema": {
-        "x-reference": "manual-edit",
-        "anyOf": [
-            {"x-url-media-type": "application/x-geophysics-xyz-model"},
-            {"type": "object",
-             "additionalProperties": False,
-             "required": ["url"],
-             "properties": {
-                 "url": {"x-url-media-type": "application/x-geophysics-xyz-model"},
-                 "title": {"type": "string"},
-                 "id": {"type": "integer"}
-             }}
-        ]
+        "x-url-media-type": "application/x-geophysics-xyz-model"
     }}]
+
 
 def apply_diff(processing : pipeline.ProcessingData, 
                diff: ManualEditUrl):
@@ -49,7 +39,7 @@ def apply_diff(processing : pipeline.ProcessingData,
 
 def save_intermediate_and_apply_diff(processing: pipeline.ProcessingData,
                                      name: str,
-                                     diff: typing.Optional[ManualEditUrl] = None):
+                                     diff: ManualEditUrl = None):
     """
     Save an intermediate state of your processing, then apply a manual culling.
 
