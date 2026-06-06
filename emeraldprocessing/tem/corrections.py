@@ -898,6 +898,99 @@ def fill_current_from_gex(processing: pipeline.ProcessingData):
     print(f"  - Time used filling current from GEX: {end - start} sec.\n")
 
 
+def normalize_data_for_simpeg(
+    processing: pipeline.ProcessingData,
+    input_normalization: typing.Literal[
+        "Rx normalized (V/m²)",
+        "Rx/Tx normalized (V/Am²)",
+        "Not normalized",
+    ] = "Rx normalized (V/m²)",
+):
+    """
+    Normalize TEM gate data to the unit-dipole convention expected by SimPEG's
+    ``static_instrument`` forward modelling.
+
+    Background
+    ----------
+    Aarhus Workbench can export dBz/dt data in three normalization states:
+
+    * **Not normalized** – raw signal (volts or ADC counts); the receiver-coil
+      response has *not* yet been removed.
+    * **Rx normalized (V/m²)** – physical dBz/dt in SI units, divided by the
+      receiver coil area × turns.  This is the standard Aarhus Workbench XYZ
+      export format.
+    * **Rx/Tx normalized (V/Am²)** – additionally divided by the transmitter
+      dipole moment (current × loop area × turns per channel).
+
+    SimPEG's ``static_instrument`` uses a magnetic dipole source with
+    ``moment = 1 Am²`` and a waveform normalized to peak amplitude 1, so its
+    forward response is the response *per unit transmitter dipole moment*
+    (numerically V/m² for 1 Am²).  For the inversion misfit to be meaningful
+    the observed data must be in the same convention: **Rx/Tx normalized**.
+
+    What this step does
+    -------------------
+    1. Reads the ``scalefactor`` stored in ``model_info``, multiplies all gate
+       data columns by it to bring the stored integers/floats to their true
+       physical magnitude, then resets ``scalefactor`` to 1 so SimPEG does not
+       apply it a second time.
+    2. Unless the data are already Rx/Tx normalized, divides each channel's gate
+       data by that channel's ``ApproxDipoleMoment`` (Am²) from the GEX file.
+
+    .. note::
+        For **Not normalized** data only the Tx-moment division is applied here;
+        the Rx-coil normalisation must have been carried out externally, or the
+        data will still be in raw units after this step.
+
+    Parameters
+    ----------
+    input_normalization :
+        Normalization state of the input gate data.  Choose the option that
+        matches how your data were exported from Aarhus Workbench:
+
+        * **Rx normalized (V/m²)** — standard Aarhus XYZ/msgpack export; each
+          channel's gate columns are divided by that channel's
+          ``ApproxDipoleMoment`` from the GEX.
+        * **Rx/Tx normalized (V/Am²)** — already in the target convention; only
+          the existing ``scalefactor`` is absorbed and reset to 1.
+        * **Not normalized** — same Tx-moment division as "Rx normalized"; ensure
+          Rx-coil normalisation has been applied upstream.
+    """
+    start = time.time()
+    print('  - Normalizing gate data for SimPEG unit-dipole convention')
+    print(f'  - Input normalization declared as: {input_normalization!r}')
+
+    gex  = processing.gex
+    data = processing.xyz
+
+    # ── Step 1: absorb existing scalefactor ───────────────────────────────────
+    scalefactor = data.model_info.get('scalefactor', 1.0)
+    if scalefactor != 1.0:
+        print(f'  - Absorbing scalefactor={scalefactor} into gate data and resetting to 1')
+        for key in list(data.layer_data.keys()):
+            if key.startswith(dat_key_prefix):
+                data.layer_data[key] = data.layer_data[key] * scalefactor
+        data.model_info['scalefactor'] = 1.0
+    else:
+        print('  - scalefactor is already 1; no pre-scaling needed')
+
+    # ── Step 2: divide by transmitter dipole moment ───────────────────────────
+    if input_normalization in ('Rx normalized (V/m²)', 'Not normalized'):
+        for ch in range(1, gex.number_channels + 1):
+            gate_col = f'{dat_key_prefix}Ch{ch:02d}'
+            moment   = gex.gex_dict[f'Channel{ch}']['ApproxDipoleMoment']
+            if gate_col in data.layer_data:
+                print(f'  - {gate_col}: dividing by ApproxDipoleMoment = {moment:.1f} Am²')
+                data.layer_data[gate_col] = data.layer_data[gate_col] / moment
+            else:
+                print(f'  - {gate_col} not found in layer_data, skipping')
+    else:
+        print('  - Data declared Rx/Tx normalized; skipping moment division')
+
+    end = time.time()
+    print(f'  - Done normalizing gate data for SimPEG ({end - start:.3f} s)\n')
+
+
 def assume_horizontal_transmitter(processing: pipeline.ProcessingData):
     """
     Set TxRoll and TxPitch to zero, assuming a perfectly horizontal transmitter.
