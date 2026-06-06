@@ -977,7 +977,7 @@ def normalize_data_for_simpeg(
     # ── Step 2: divide by transmitter dipole moment ───────────────────────────
     if input_normalization in ('Rx normalized (V/m²)', 'Not normalized'):
         for ch in range(1, gex.number_channels + 1):
-            gate_col = f'{dat_key_prefix}Ch{ch:02d}'
+            gate_col = f'{dat_key_prefix}{ch:02d}'
             moment   = gex.gex_dict[f'Channel{ch}']['ApproxDipoleMoment']
             if gate_col in data.layer_data:
                 print(f'  - {gate_col}: dividing by ApproxDipoleMoment = {moment:.1f} Am²')
