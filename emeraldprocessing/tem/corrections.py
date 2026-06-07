@@ -158,6 +158,16 @@ def select_lines(processing: pipeline.ProcessingData,
     print(f"  - Time used reducing the dataset {end - start} sec.")
 
 
+def _resolve_stride(line_data, decimation_factor, target_spacing_m):
+    if target_spacing_m is not None:
+        if 'lineoffset' not in line_data.flightlines.columns:
+            utils.calc_lineOffset(line_data)
+        spacing = line_data.flightlines.lineoffset.diff().median()
+        if spacing and spacing > 0:
+            return max(1, round(target_spacing_m / spacing))
+    return max(1, decimation_factor)
+
+
 def moving_average_filter(processing: pipeline.ProcessingData,
                           filter_dict: MovingAverageFilterDict = {'Gate_Ch01': {'width_at_first_gate': 3,
                                                                                  'width_at_last_gate': 5},
@@ -165,6 +175,8 @@ def moving_average_filter(processing: pipeline.ProcessingData,
                                                                                  'width_at_last_gate': 9}},
                           averaging_method: str = 'hybrid',
                           min_valid_fraction: float = 0.35,
+                          decimation_factor: int = 1,
+                          target_spacing_m: float = None,
                           verbose: bool = False):
     """
     Moving average filter, averaging Gate values from neighboring soundings.
@@ -200,6 +212,18 @@ def moving_average_filter(processing: pipeline.ProcessingData,
         - 0.2: Permissive — fills aggressively near edges; use with caution near heavily
           culled regions.
 
+    decimation_factor : int, optional
+        Sub-sample the averaged data by keeping every N-th sounding (default 1 = no
+        decimation).  Applied per line after the moving-average step so the filter
+        window always operates on the full-resolution data.
+
+    target_spacing_m : float, optional
+        Target along-line sounding spacing in metres.  If provided, the decimation
+        stride is computed automatically as ``round(target_spacing_m / median_spacing)``
+        per flight line.  Takes precedence over ``decimation_factor``.
+        Use ``utils.estimateInlineSamplig`` to inspect the current spacing before
+        choosing a target.
+
     verbose :
         If True, more output about what the filter is doing
     """
@@ -227,12 +251,14 @@ def moving_average_filter(processing: pipeline.ProcessingData,
 
     lines = utils.splitData_lines(data, line_key='Line')
     for line in lines.keys():
+        stride = _resolve_stride(lines[line], decimation_factor, target_spacing_m)
         if verbose:
-            print(f'  - Filtering line: {line}')
+            print(f'  - Filtering line: {line} (stride={stride})')
         movingAverageFilterLine(lines[line],
                                 filter_list_dict,
                                 averaging_method=averaging_method,
                                 min_valid_fraction=min_valid_fraction,
+                                stride=stride,
                                 verbose=verbose)
     processing.xyz = utils.merge_lines(lines)
     end = time.time()
@@ -243,6 +269,7 @@ def movingAverageFilterLine(lineData,
                             filter_dict,
                             averaging_method='hybrid',
                             min_valid_fraction=0.35,
+                            stride=1,
                             verbose=False):
     layer_data_keys = lineData.layer_data.keys()
 
@@ -355,6 +382,12 @@ def movingAverageFilterLine(lineData,
 
                 lineData.layer_data[dat_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
                 lineData.layer_data[std_key][lineData.layer_data[utils.inuse_moment(dat_key)] == 0] = np.nan
+
+    if stride > 1:
+        n = len(lineData.flightlines)
+        keep = np.zeros(n, dtype=bool)
+        keep[::stride] = True
+        utils.drop_filt_XYZ(lineData, ~keep)
 
 
 def correct_data_tilt_for1D(processing: pipeline.ProcessingData,
