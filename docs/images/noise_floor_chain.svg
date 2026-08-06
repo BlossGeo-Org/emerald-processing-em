@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="470" viewBox="0 0 680 470" role="img" aria-labelledby="t d">
+<title id="t">How noise_level_1ms becomes injected noise</title>
+<desc id="d">Three-stage chain: make_noise_df builds an absolute noise floor decaying as t to the power minus one half; add_replace_gex_std_error stores it as a fraction of signal amplitude; add_noise_realization multiplies it back to recover the absolute floor. Below, a log-log sketch shows the signal decaying faster than the noise floor, so the two converge and signal-to-noise collapses at late gate times.</desc>
+<style>
+  .bg   { fill: #ffffff; }
+  .box  { fill: #ddf4ff; stroke: #54aeff; stroke-width: 1; }
+  .th   { font: 500 14px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .t    { font: 400 14px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1f2328; }
+  .ts   { font: 400 12px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #656d76; }
+  .axis { stroke: #d0d7de; stroke-width: 0.5; }
+  .arr  { stroke: #656d76; stroke-width: 1.5; fill: none; }
+  .sig  { stroke: #0969da; stroke-width: 2; fill: none; }
+  .sigl { font: 400 12px system-ui, sans-serif; fill: #0969da; }
+  .noi  { stroke: #cf222e; stroke-width: 2; fill: none; stroke-dasharray: 5 3; }
+  .noil { font: 400 12px system-ui, sans-serif; fill: #cf222e; }
+  .dot  { fill: #cf222e; }
+  .ring { fill: none; stroke: #656d76; stroke-width: 1.5; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill: #0d1117; }
+    .box  { fill: #121d2f; stroke: #1f6feb; }
+    .th, .t { fill: #e6edf3; }
+    .ts   { fill: #8b949e; }
+    .axis { stroke: #30363d; }
+    .arr  { stroke: #8b949e; }
+    .sig  { stroke: #58a6ff; }
+    .sigl { fill: #58a6ff; }
+    .noi  { stroke: #ff7b72; }
+    .noil { fill: #ff7b72; }
+    .dot  { fill: #ff7b72; }
+    .ring { stroke: #8b949e; }
+  }
+</style>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<rect class="bg" x="0" y="0" width="680" height="470"/>
+
+<rect class="box" x="40" y="40" width="180" height="66" rx="4"/>
+<text class="th" x="52" y="62">make_noise_df</text>
+<text class="ts" x="52" y="80">N(t) = level x (t/1ms)^-0.5</text>
+<text class="ts" x="52" y="96">/ scalefactor / moment</text>
+
+<rect class="box" x="250" y="40" width="180" height="66" rx="4"/>
+<text class="th" x="262" y="62">add_replace_gex_std</text>
+<text class="ts" x="262" y="80">STD = N / |signal|</text>
+<text class="ts" x="262" y="96">stored as a fraction</text>
+
+<rect class="box" x="460" y="40" width="180" height="66" rx="4"/>
+<text class="th" x="472" y="62">add_noise_realization</text>
+<text class="ts" x="472" y="80">sigma = STD x |signal|</text>
+<text class="ts" x="472" y="96">= N again</text>
+
+<line class="arr" x1="222" y1="73" x2="248" y2="73" marker-end="url(#arrow)"/>
+<line class="arr" x1="432" y1="73" x2="458" y2="73" marker-end="url(#arrow)"/>
+
+<line class="axis" x1="40" y1="140" x2="640" y2="140"/>
+<text class="ts" x="40" y="168">gate time, log scale</text>
+
+<line class="axis" x1="90" y1="200" x2="90" y2="400"/>
+<line class="axis" x1="90" y1="400" x2="620" y2="400"/>
+<text class="ts" x="42" y="206">amp</text>
+<text class="ts" x="96" y="418">0.1 ms</text>
+<text class="ts" x="316" y="418">1 ms</text>
+<text class="ts" x="556" y="418">10 ms</text>
+
+<path class="sig" d="M100 212 L200 252 L330 300 L460 348 L610 396"/>
+<text class="sigl" x="466" y="338">signal  t^-5/2</text>
+
+<path class="noi" d="M100 300 L200 314 L330 330 L460 346 L610 362"/>
+<text class="noil" x="120" y="292">noise floor  t^-0.5</text>
+
+<circle class="dot" cx="330" cy="330" r="3.5"/>
+<text class="noil" x="286" y="352">= noise_level_1ms</text>
+
+<circle class="ring" cx="474" cy="352" r="5"/>
+<text class="ts" x="486" y="378">curves converge, SNR gone</text>
+</svg>
