@@ -68,6 +68,45 @@ def read_shape_in_margins(shapefile, bbox, crs, margin_x=2000, margin_y=2000):
     df_shp=gpd.read_file(shapefile, bbox=bbox)
     return df_shp.to_crs(crs), bbox
 
+def getGateTimeTable(gex, channel='Channel1'):
+    """Return the General gate-time table that applies to a channel.
+
+    GEX files use one of two conventions for gate times:
+
+    - A single shared table under ``General/GateTime``, which every channel
+      slices by its own ``NoGates``.  Used where both moments share a gate
+      layout, e.g. SkyTEM 304 and 304M.
+    - Per-moment tables under ``General/GateTimeLM`` and ``General/GateTimeHM``,
+      selected by the channel's ``TransmitterMoment``.  Used where the moments
+      have independent gate layouts, e.g. SkyTEM 306HP (25 LM gates, 41 HM)
+      and 312HP.
+
+    The two are not interchangeable — a system with independent layouts cannot
+    be expressed as one shared table — so both forms have to be supported.
+    ``libaarhusxyz.GEX.gate_times`` already handles both; this brings the
+    behaviour here into line with it.
+    """
+    general = gex.gex_dict['General']
+    if 'GateTime' in general:
+        return general['GateTime']
+
+    moment = gex.gex_dict[channel].get('TransmitterMoment')
+    if moment is not None:
+        key = 'GateTime{}'.format(moment)
+        if key in general:
+            return general[key]
+
+    raise KeyError(
+        "No gate-time table found for {ch} in GEX General section. Looked for "
+        "'GateTime' and 'GateTime{mom}'. Available General keys containing "
+        "'GateTime': {found}".format(
+            ch=channel,
+            mom=moment if moment is not None else '<TransmitterMoment missing>',
+            found=sorted(k for k in general if 'GateTime' in k) or 'none',
+        )
+    )
+
+
 def getGateTimesFromGEX(gex, channel='Channel1'):
     NoGates=int(gex.gex_dict[channel]['NoGates'])
     if 'RemoveGatesFrom' in gex.gex_dict[channel].keys():
@@ -76,7 +115,8 @@ def getGateTimesFromGEX(gex, channel='Channel1'):
         RemoveGatesFrom=int(0)
     if not('MeaTimeDelay' in gex.gex_dict[channel].keys()):
         gex.gex_dict[channel]['MeaTimeDelay']=0.0
-    gatetimes=(gex.gex_dict['General']['GateTime'][RemoveGatesFrom:NoGates,:] + gex.gex_dict[channel]['GateTimeShift'] + gex.gex_dict[channel]['MeaTimeDelay'] )
+    gate_time_table = getGateTimeTable(gex, channel)
+    gatetimes=(gate_time_table[RemoveGatesFrom:NoGates,:] + gex.gex_dict[channel]['GateTimeShift'] + gex.gex_dict[channel]['MeaTimeDelay'] )
     return gatetimes
 
 def inuse_moment(moment):
