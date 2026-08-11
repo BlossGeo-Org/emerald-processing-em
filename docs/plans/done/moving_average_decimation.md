@@ -5,7 +5,7 @@
 The upstream SkyTEM / NRD survey processing in Aarhus Workbench exports AEM data at
 a much coarser spacing (~25 m) than the raw acquisition rate (~2.6 m), having applied
 a moving-average / stacking filter and then sub-sampled the result.  The current
-`moving_average_filter` step in nagelfluh smooths data in place but leaves the sounding
+`moving_average_filter` step in ymerflow smooths data in place but leaves the sounding
 count unchanged.  To match the upstream workflow (and to reduce inversion cost) we need
 a **decimation option** that retains every N-th sounding after averaging.
 
@@ -128,7 +128,7 @@ target_spacing_m : float, optional
 
 ### 5. JSON schema (`pipeline_step` entry)
 
-The Nagelfluh JSON schema for `Moving average filter` is auto-generated from the
+The YmerFlow JSON schema for `Moving average filter` is auto-generated from the
 function signature via `scripts/make_json_schema.py`.  Re-running that script after
 the code change will emit:
 
