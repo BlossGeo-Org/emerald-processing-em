@@ -461,49 +461,19 @@ def correct_data_tilt_for1D(processing: pipeline.ProcessingData,
 
 
 def add_replace_gex_std_error(processing: pipeline.ProcessingData,
-                              channel: Channel = 1,
-                              noise_level_1ms: float = None,
-                              noise_exponent: float = -0.5,
-                              relative_noise_fraction: float = None):
+                              channel: Channel = 1):
     """
-    Replace STD error estimates with a noise model.
+    Replace STD error estimates with the uniform value from the GEX file.
 
-    By default (no optional parameters) reads a uniform value from the GEX file
-    (Channel{n}/UniformDataSTD).
-
-    STD values are always stored as dimensionless relative fractions (consistent
-    with the rest of the pipeline, e.g. cull_std_threshold).
-
-    Behaviour depending on which optional parameters are supplied:
-
-    - Neither (default): STD = GEX UniformDataSTD (uniform fraction).
-    - relative_noise_fraction only: STD = sqrt((σ_abs/|d|)² + r²)  where σ_abs = UniformDataSTD
-      is the absolute noise floor in data units. This is the standard quadrature combination:
-      the absolute floor expressed as a fraction dominates at low signal; r dominates at high signal.
-    - noise_level_1ms only: STD = N_abs / |signal|  (time-varying fraction from
-      the absolute noise floor).
-    - Both: STD = sqrt(N_abs * relative_noise_fraction / |signal|)  — the geometric
-      mean of the two noise sources expressed as a fraction.
+    Reads Channel{n}/UniformDataSTD (typically ~3%) and stamps it uniformly
+    across all gates for the given channel.  STD values are stored as
+    dimensionless relative fractions throughout the pipeline (consistent with
+    cull_std_threshold etc.).
 
     Parameters
     ----------
     channel :
         Which channel to set the STD for.
-    noise_level_1ms :
-        Absolute noise floor amplitude at t=1ms, in V/m² (dB/dt normalised by
-        receiver area only, NOT by transmitter moment).  make_noise_df divides
-        this by the transmitter dipole moment internally, so the stored STD ends
-        up in the same V/(A*m^4) units as the data.
-        Empirical values for SkyTEM 304 (quiet rural survey):
-          LM (Ch1): ~5e-10 V/m²  (~1.7e-13 V/(A*m^4))
-          HM (Ch2): ~1.5e-9 V/m² (~9.6e-15 V/(A*m^4))
-        If None, the GEX UniformDataSTD value is used (no-noise_level_1ms cases).
-    noise_exponent :
-        Power-law exponent for the time-dependent noise floor (default -0.5).
-        Only used when noise_level_1ms is provided.
-    relative_noise_fraction :
-        Fractional noise relative to the signal amplitude (e.g. 0.03 for 3%).
-        See behaviour table above.
     """
     start = time.time()
     data = processing.xyz
@@ -512,45 +482,97 @@ def add_replace_gex_std_error(processing: pipeline.ProcessingData,
     data_key = f"{dat_key_prefix}{str_channel}"
     std_key = f"{std_key_prefix}{str_channel}"
 
-    # STD is stored as a dimensionless relative fraction throughout this codebase.
-    # The geomean formula in absolute units is sqrt(N_abs * r * |signal|); dividing
-    # by |signal| converts it to the equivalent fractional STD: sqrt(N_abs * r / |signal|).
+    print('  - Setting STD from GEX UniformDataSTD')
+    gex_std = processing.gex.gex_dict[f'Channel{channel}']['UniformDataSTD']
+    std_df = pd.DataFrame(np.full(data.layer_data[data_key].shape, gex_std),
+                          dtype=float,
+                          columns=data.layer_data[data_key].columns,
+                          index=data.layer_data[data_key].index)
+
+    data.layer_data[std_key] = std_df
+
+    end = time.time()
+    print(f"  - Time used to set STD errors: {end - start} sec.\n")
+
+
+def add_std_error_from_noise_model(processing: pipeline.ProcessingData,
+                                   channel: Channel = 1,
+                                   noise_level_1ms: float = None,
+                                   noise_exponent: float = -0.5,
+                                   relative_noise_fraction: float = None):
+    """
+    Refine STD error estimates by quadrature-combining a base STD with a
+    physical noise model.
+
+    The base STD (from a prior call to add_replace_gex_std_error, or any other
+    step that populates STD_Ch##) represents the absolute noise floor expressed
+    as a dimensionless relative fraction.  At low signal amplitudes this floor
+    dominates; the noise model terms dominate at high amplitudes.  The two are
+    combined in quadrature:
+
+        STD_out = sqrt(base² + noise_model²)
+
+    If STD_Ch## does not yet exist in the data, a warning is printed and
+    add_replace_gex_std_error is called automatically to populate it first.
+
+    STD values are always stored as dimensionless relative fractions (consistent
+    with the rest of the pipeline, e.g. cull_std_threshold).
+
+    Parameters
+    ----------
+    channel :
+        Which channel to refine the STD for.
+    noise_level_1ms :
+        Absolute noise floor amplitude at t=1ms, in V/m² (dBdt normalized by
+        receiver area only, NOT by transmitter moment).  make_noise_df divides
+        this by the transmitter dipole moment internally, so the stored STD ends
+        up in the same V/(A*m^4) units as the data.
+        Empirical values for SkyTEM 304 (quiet rural survey):
+          LM (Ch1): ~5e-10 V/m²  (~1.7e-13 V/(A*m^4))
+          HM (Ch2): ~1.5e-9 V/m² (~9.6e-15 V/(A*m^4))
+        If None, only relative_noise_fraction is applied (if provided).
+    noise_exponent :
+        Power-law exponent for the time-dependent noise floor (default -0.5).
+        Only used when noise_level_1ms is provided.
+    relative_noise_fraction :
+        Fractional noise relative to signal amplitude (e.g. 0.03 for 3%).
+        If None, only noise_level_1ms is applied (if provided).
+    """
+    start = time.time()
+    data = processing.xyz
+
+    str_channel = f"0{channel}"[-2:]
+    data_key = f"{dat_key_prefix}{str_channel}"
+    std_key = f"{std_key_prefix}{str_channel}"
+
+    if std_key not in data.layer_data:
+        print(f'  - Warning: no existing STD found for channel {channel}; '
+              f'running add_replace_gex_std_error first.')
+        add_replace_gex_std_error(processing, channel=channel)
+
+    base_std = data.layer_data[std_key]
     signal_abs = data.layer_data[data_key].abs()
 
-    if noise_level_1ms is None and relative_noise_fraction is None:
-        print('  - Setting STD from GEX UniformDataSTD')
-        gex_std = processing.gex.gex_dict[f'Channel{channel}']['UniformDataSTD']
-        std_df = pd.DataFrame(np.full(data.layer_data[data_key].shape, gex_std),
-                              dtype=float,
-                              columns=data.layer_data[data_key].columns,
-                              index=data.layer_data[data_key].index)
-    elif noise_level_1ms is None:
-        print(f'  - Setting STD as quadrature sum of GEX UniformDataSTD and {relative_noise_fraction} relative noise')
-        gex_std = processing.gex.gex_dict[f'Channel{channel}']['UniformDataSTD']
-        n_abs = pd.DataFrame(np.full(data.layer_data[data_key].shape, float(gex_std)),
-                             dtype=float,
-                             columns=data.layer_data[data_key].columns,
-                             index=data.layer_data[data_key].index)
-        abs_frac = n_abs / signal_abs.clip(lower=float(gex_std))
-        std_df = np.sqrt(abs_frac ** 2 + float(relative_noise_fraction) ** 2)
-    else:
+    noise_terms = [base_std ** 2]
+
+    if noise_level_1ms is not None:
+        print(f'  - Adding time-dependent noise floor (noise_level_1ms={noise_level_1ms})')
         n_abs = utils.make_noise_df(processing,
                                     channel=channel,
                                     noise_level_1ms=float(noise_level_1ms),
                                     noise_exponent=float(noise_exponent),
                                     norm_by_tx=True)
         abs_frac = n_abs / signal_abs.clip(lower=n_abs.min().min())
-        if relative_noise_fraction is None:
-            print(f'  - Setting STD from time-dependent noise floor (noise_level_1ms={noise_level_1ms})')
-            std_df = abs_frac
-        else:
-            print(f'  - Setting STD as quadrature sum of noise floor and {relative_noise_fraction} relative noise')
-            std_df = np.sqrt(abs_frac ** 2 + float(relative_noise_fraction) ** 2)
+        noise_terms.append(abs_frac ** 2)
 
-    data.layer_data[std_key] = std_df
+    if relative_noise_fraction is not None:
+        print(f'  - Adding {relative_noise_fraction} relative noise fraction')
+        noise_terms.append(float(relative_noise_fraction) ** 2)
+
+    data.layer_data[std_key] = np.sqrt(sum(noise_terms))
 
     end = time.time()
-    print(f"  - Time used to set STD errors: {end - start} sec.\n")
+    print(f"  - Time used to refine STD errors: {end - start} sec.\n")
 
 
 def add_noise_realization(processing: pipeline.ProcessingData,
@@ -561,8 +583,8 @@ def add_noise_realization(processing: pipeline.ProcessingData,
     already stored in STD_Ch##.  Intended for synthetic forward-model data so
     it can be fed into an inversion with realistic noise.
 
-    Run add_replace_gex_std_error (with noise_level_1ms / relative_noise_fraction)
-    before this step to set the STD values.
+    Run add_replace_gex_std_error or add_std_error_from_noise_model before this
+    step to set the STD values.
 
     Parameters
     ----------
