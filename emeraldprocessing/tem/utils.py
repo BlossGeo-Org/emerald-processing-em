@@ -784,6 +784,36 @@ def interpolate_rolling_size_for_all_gates(filterlist, moment):
     ni = f(ci)
     return [round_to_odd(n) for n in ni]
 
+def warn_on_new_all_nan_gates(df_before, df_after, key):
+    """
+    Warn when a filter empties a gate that had data going in.
+
+    An all-NaN gate is not reported as an error anywhere downstream, and a
+    fully NaN channel only surfaces much later as a confusing unit or
+    scalefactor assertion in the inversion. Say so at the source instead.
+
+    Parameters
+    ----------
+    df_before : DataFrame
+        Gate data as it entered the filter
+    df_after : DataFrame
+        Gate data as the filter returned it
+    key : str
+        layer_data key, used only in the message
+
+    Returns
+    -------
+    list
+        The columns that were emptied, in order
+    """
+    emptied = [col for col in df_after.columns
+               if df_after[col].isna().all() and not df_before[col].isna().all()]
+    if emptied:
+        print(f"  - WARNING: '{key}' gate(s) {emptied} are entirely NaN after filtering")
+        print(f"    - they held data before this step; check the filter widths")
+    return emptied
+
+
 def get_min_periods(filter_length, min_valid_fraction=0.35):
     """
     Calculate minimum periods as a fraction of filter length.
@@ -952,6 +982,16 @@ def rolling_hybrid_mean_df(df_dat, df_err_fp, rolling_lengths,
     std_err_ab = df_err_ab * np.nan
 
     for filter_length, col in zip(rolling_lengths, df_dat.columns):
+        # A window of one sounding has nothing to average and no scatter to
+        # estimate a variance from. The identity is the only sensible answer:
+        # pass the sample through with its own reported error. Without this the
+        # alpha_trim guard below (which needs 2 samples) skips every sounding
+        # and the column is returned entirely NaN.
+        if filter_length <= 1:
+            ave_dat[col] = df_dat[col]
+            std_err_ab[col] = df_err_ab[col]
+            continue
+
         min_periods = get_min_periods(filter_length, min_valid_fraction)
 
         for sid in range(len(df_dat[col])):
@@ -1108,6 +1148,13 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths, min_valid_fraction=0
         std_SST_err_ab = df_err_ab * np.nan
 
         for filter_length, col in zip(rolling_lengths, df_dat.columns):
+            # A one-sounding window is the identity; pass the sample through
+            # with its own reported error rather than re-deriving it.
+            if filter_length <= 1:
+                ave_dat[col] = df_dat[col]
+                std_SST_err_ab[col] = df_err_ab[col]
+                continue
+
             # Calculate the average of the data
             ave_dat[col] = df_dat[col].rolling(filter_length, center=True, min_periods=get_min_periods(filter_length, min_valid_fraction)).mean()
 
@@ -1150,7 +1197,15 @@ def rolling_SST_mean_df(df_dat, df_err_fp, rolling_lengths, min_valid_fraction=0
 
 
 def rolling_mean_df(df_dat, rolling_lengths, error_calc_scheme='Unweighted_SEM',
-                    min_valid_fraction=0.35):
+                    min_valid_fraction=0.35, df_err_fp=None):
+    """
+    Rolling mean with the error estimated from the scatter within each window.
+
+    df_err_fp is optional and only used for one-sounding windows, where there
+    is no scatter to estimate an error from. Supplying it lets a width-1 filter
+    act as the identity instead of returning an all-NaN error column; without
+    it the error for such windows is NaN, since none can be derived.
+    """
     if len(rolling_lengths) == len(df_dat.columns):
         # Prepare empty data frames
         ave_dat = df_dat * np.nan
@@ -1158,6 +1213,16 @@ def rolling_mean_df(df_dat, rolling_lengths, error_calc_scheme='Unweighted_SEM',
         unweighted_SEM_df = df_dat * np.nan
 
         for filter_length, col in zip(rolling_lengths, df_dat.columns):
+            # A one-sounding window is the identity. Note that .rolling(1).std()
+            # is NaN by construction (ddof=1), so without this the data would
+            # pass through but the error column would be destroyed.
+            if filter_length <= 1:
+                ave_dat[col] = df_dat[col]
+                if df_err_fp is not None:
+                    std_err_df[col] = np.abs(df_err_fp[col] * df_dat[col])
+                    unweighted_SEM_df[col] = std_err_df[col]
+                continue
+
             min_periods = get_min_periods(filter_length, min_valid_fraction)
             # Calculate the rolling STD error
             std_err_df[col] = df_dat[col].rolling(filter_length, center=True, min_periods=min_periods).std()

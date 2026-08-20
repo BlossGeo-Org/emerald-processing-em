@@ -192,6 +192,9 @@ def moving_average_filter(processing: pipeline.ProcessingData,
     filter_dict :
         Dictionary describing the filter widths, in number of soundings, centered on current sounding, for the first and the last time-gate
         of each moment/channel. The default is {'Gate_Ch01':[3, 5], 'Gate_Ch02':[5, 9]}.
+        A width of 1 is the identity: the sounding passes through with its own
+        error, unaveraged. Use it with target_spacing_m or decimation_factor to
+        decimate without stacking.
 
     averaging_method :
         Method for computing rolling averages when error estimates exist. Options:
@@ -327,10 +330,13 @@ def movingAverageFilterLine(lineData,
                 average_data, average_std = utils.rolling_mean_df(dBdt_df,
                                                                   rolling_lengths,
                                                                   error_calc_scheme='STD',
-                                                                  min_valid_fraction=min_valid_fraction)
+                                                                  min_valid_fraction=min_valid_fraction,
+                                                                  df_err_fp=std_df)
             else:
                 raise ValueError(f"Unknown averaging_method '{averaging_method}'. "
                                f"Choose from: 'hybrid', 'SST', 'simple'")
+
+            utils.warn_on_new_all_nan_gates(dBdt_df, average_data, dat_key)
 
             lineData.layer_data[dat_key].loc[filt, :] = average_data
             lineData.layer_data[std_key].loc[filt, :] = average_std
@@ -376,6 +382,8 @@ def movingAverageFilterLine(lineData,
                                                                   rolling_lengths,
                                                                   error_calc_scheme='STD',
                                                                   min_valid_fraction=min_valid_fraction)
+
+                utils.warn_on_new_all_nan_gates(dBdt_df, average_data, dat_key)
 
                 lineData.layer_data[dat_key].loc[filt, :] = average_data
                 lineData.layer_data[std_key].loc[filt, :] = average_std
