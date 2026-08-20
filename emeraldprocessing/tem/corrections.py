@@ -519,6 +519,15 @@ def add_std_error_from_noise_model(processing: pipeline.ProcessingData,
     STD values are always stored as dimensionless relative fractions (consistent
     with the rest of the pipeline, e.g. cull_std_threshold).
 
+    Note on quadrature: every term here raises the STD and none can lower it,
+    so each parameter sets a floor rather than scaling the result. Because
+    sqrt(a² + b²) ≈ a whenever b is much smaller than a, a term well below the
+    others has almost no visible effect. Tripling relative_noise_fraction from
+    0.01 to 0.03 alongside a noise floor that already contributes ~1.4 moves
+    the STD by well under a percent. If you are trying to scale an existing
+    error model up or down, this is not the step to do it with — change the
+    dominant term, or use 'STD error: Add fractional error'.
+
     Parameters
     ----------
     channel :
@@ -537,7 +546,10 @@ def add_std_error_from_noise_model(processing: pipeline.ProcessingData,
         Only used when noise_level_1ms is provided.
     relative_noise_fraction :
         Fractional noise relative to signal amplitude (e.g. 0.03 for 3%).
-        If None, only noise_level_1ms is applied (if provided).
+        Added in quadrature, so it acts as a lower bound on the STD and not as
+        a multiplier on it: the result can never fall below this value, and
+        never below the base STD either. If None, only noise_level_1ms is
+        applied (if provided).
     """
     start = time.time()
     data = processing.xyz
