@@ -89,14 +89,8 @@ def save_intermediate_and_apply_diff(processing: pipeline.ProcessingData,
             geojsonfile = '%s/%s.%s.geojson' % (processing.outdir, name, sfline))
 
     if diff is not None:
-        if isinstance(diff, dict): diff = diff["url"]
-
-        if diff.endswith(".xyz") or diff.endswith(".xyzd"):
-            diffxyz = libaarhusxyz.XYZ(diff, normalize=False)
-        elif diff.endswith(".msgpack"):
-            diffxyz = libaarhusxyz.export.msgpack.load(diff)
-
-        diffxyz.normalize_naming(naming_standard="alc")
-
-        processing.xyz = processing.xyz.apply_diff(diffxyz)
+        # Delegate rather than duplicate. This block used to be a verbatim copy
+        # of apply_diff's body, which is how four upstream robustness fixes
+        # landed in apply_diff and missed the entry point we actually register.
+        apply_diff(processing, diff)
 
