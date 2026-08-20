@@ -32,7 +32,21 @@ def apply_diff(processing : pipeline.ProcessingData,
     elif diff.endswith(".msgpack"):
         diffxyz = libaarhusxyz.export.msgpack.load(diff)
         
-    diffxyz.normalize_naming(naming_standard="alc")
+    # Only normalize full XYZ files (.xyz/.xyzd), never diffs from msgpack.
+    # Diffs have sparse model_dicts with raw values (not DataFrames) that
+    # crash normalize_naming, and their column names already match the source.
+    if diff.endswith(".xyz") or diff.endswith(".xyzd"):
+        if hasattr(diffxyz, 'model_dict') and 'model_info' in diffxyz.model_dict:
+            diffxyz.normalize_naming(naming_standard="alc")
+
+    # Ensure diff_dummy is set — frontend manual edit diffs always use -1 as
+    # the sentinel for "no change". If model_info is missing or incomplete
+    # (e.g. from a load→re-save cycle), default it so apply_diff skips sentinels.
+    # Note: model_info is a property, so set via model_dict directly.
+    if not diffxyz.model_info.get("diff_dummy"):
+        mi = diffxyz.model_dict.get("model_info", {})
+        mi["diff_dummy"] = -1
+        diffxyz.model_dict["model_info"] = mi
 
     processing.xyz = processing.xyz.apply_diff(diffxyz)
 
