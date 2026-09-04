@@ -551,7 +551,11 @@ def cull_std_threshold(processing: pipeline.ProcessingData,
     else:
         inuse_df = build_inuse_dataframe(data=data, channel=channel)
 
-        filt = data.layer_data[std_key] > std_threshold
+        std = data.layer_data[std_key]
+        # A NaN STD is an unknown uncertainty, not a small one. `NaN > x` is False,
+        # so the plain comparison let every NaN-STD datum survive any threshold -
+        # the opposite of this filter's intent (Ymerflow#77). Cull it explicitly.
+        filt = (std > std_threshold) | std.isna()
         inuse_df[filt] = 0
         inuse_df.iloc[:, :first_gate_to_consider + 1] = 1
 
